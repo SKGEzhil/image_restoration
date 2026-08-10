@@ -1,0 +1,18 @@
+# Training configuration for src/train.py (NAFNet SR + denoise).
+# All values are optional; anything omitted falls back to train.py defaults.
+
+data_dir: data        # paired dataset root (NoisyLR + GT subdirs per split)
+epochs: 3
+batch_size: 8
+lr: 0.001
+val_every: 50             # run validation every N training steps
+wandb_log_step: 5         # log metrics to wandb every N steps (0 disables wandb)
+l1_weight: 1
+ssim_weight: 0.2
+width: 32                 # NAFNet base width
+num_blks: 8               # NAFNetSR body blocks
+drop_out_rate: 0.0
+num_workers: 2
+seed: 42
+run_name: null            # run id (default: timestamp); also the wandb run name
+resume: null              # path to a last.pt to resume from
