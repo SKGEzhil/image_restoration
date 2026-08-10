@@ -78,6 +78,7 @@ def main():
     total_l1 = total_ssim_loss = total_psnr = 0.0
     num = 0
     outputs = []
+    per_sample = []
     start = time.time()
     with torch.no_grad():
         for lr, gt, names in tqdm(test_loader, desc="Testing", unit="batch"):
@@ -92,6 +93,16 @@ def main():
             if args.save_outputs:
                 for name, out in zip(names, pred.clamp(0, 1).cpu().numpy()):
                     outputs.append((name, out))
+            for name, p, g in zip(names, pred, gt):
+                l1_s, ssim_loss_s, ssim_s = separate_losses(p.unsqueeze(0), g.unsqueeze(0))
+                psnr_s = compute_psnr(p.unsqueeze(0), g.unsqueeze(0))
+                per_sample.append({
+                    "name": name,
+                    "L1": round(float(l1_s), 6),
+                    "SSIM": round(float(ssim_s), 6),
+                    "SSIM_loss": round(float(ssim_loss_s), 6),
+                    "PSNR": round(float(psnr_s), 6),
+                })
 
     metrics = {
         "checkpoint": args.checkpoint,
@@ -108,12 +119,23 @@ def main():
     metrics_file.write_text(json.dumps(metrics, indent=2))
     logger.info(metrics_file)
 
+    details_file = out_dir / "test_details.json"
+    details = {
+        "checkpoint": args.checkpoint,
+        "num_samples": num,
+        "metrics": metrics,
+        "per_sample": per_sample,
+    }
+    details_file.write_text(json.dumps(details, indent=2))
+    logger.info(details_file)
+
     print("\n=== Test results ===")
     print(f"  samples : {metrics['num_samples']}")
     print(f"  L1      : {metrics['L1']:.4f}")
     print(f"  SSIM    : {metrics['SSIM']:.4f}")
     print(f"  PSNR    : {metrics['PSNR']:.2f} dB")
     print(f"  saved   : {metrics_file}")
+    print(f"  details : {details_file}")
 
     if args.save_outputs:
         out_dir_outputs = out_dir / "outputs"

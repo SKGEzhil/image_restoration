@@ -48,3 +48,4 @@ logs/
 runs/
 checkpoints/
 src/wandb
+wandb
