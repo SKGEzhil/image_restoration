@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import time
+import threading
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,58 @@ from tqdm import tqdm
 from dataset import PairedDataset, get_device, set_seed
 from metrics import build_loss, compute_psnr, compute_ssim, separate_losses
 from model import create_model
+
+
+class AsyncWandbLogger:
+    """Non-blocking wandb logger using a background thread."""
+
+    def __init__(self, wandb_run):
+        self.wandb_run = wandb_run
+        self._queue = deque()
+        self._lock = threading.Lock()
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+
+    def _worker(self):
+        while True:
+            item = None
+            with self._lock:
+                if self._queue:
+                    item = self._queue.popleft()
+            if item is None:
+                time.sleep(0.01)
+                continue
+            func, args, kwargs = item
+            try:
+                func(*args, **kwargs)
+            except Exception as e:
+                logging.getLogger("train").warning(f"[wandb] async log failed: {e}")
+
+    def log(self, *args, **kwargs):
+        if self.wandb_run is None:
+            return
+        with self._lock:
+            self._queue.append((self.wandb_run.log, args, kwargs))
+
+    def log_images(self, images, step):
+        if self.wandb_run is None:
+            return
+        import numpy as np
+        import wandb
+        lr, gt, pred = images
+        grid = []
+        for i in range(lr.shape[0]):
+            grid.append(wandb.Image(lr[i], caption=f"LR {i}"))
+            grid.append(wandb.Image(gt[i], caption=f"GT {i}"))
+            grid.append(wandb.Image(np.clip(pred[i], 0, 1), caption=f"Pred {i}"))
+        self.log({"samples/lr_gt_pred": grid, "train/step": step}, step=step)
+
+    def finish(self):
+        if self.wandb_run is None:
+            return
+        while self._queue:
+            time.sleep(0.05)
+        self.wandb_run.finish()
 
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "src" / "training_config.yaml"
@@ -114,27 +167,12 @@ def save_checkpoint(state, path):
     torch.save(state, path)
 
 
-def log_samples(wandb_run, images, step):
-    if wandb_run is None:
-        return
-    import numpy as np
-    import wandb
-    lr, gt, pred = images
-    grid = []
-    for i in range(lr.shape[0]):
-        grid.append(wandb.Image(lr[i], caption=f"LR {i}"))
-        grid.append(wandb.Image(gt[i], caption=f"GT {i}"))
-        grid.append(wandb.Image(np.clip(pred[i], 0, 1), caption=f"Pred {i}"))
-    wandb_run.log({"samples/lr_gt_pred": grid, "train/step": step}, step=step)
-
-
-def validate(model, val_loader, device, l1_weight, ssim_weight, freq_weight):
+def validate(model, val_data_gpu, l1_weight, ssim_weight, freq_weight):
     model.eval()
     total_l1 = total_ssim_loss = total_psnr = total_freq_loss = total_ssim = 0.0
     num = 0
     with torch.inference_mode():
-        for lr, gt, _ in val_loader:
-            lr, gt = lr.to(device), gt.to(device)
+        for lr, gt in val_data_gpu:
             pred = model(lr)
             l1, ssim_loss, ssim, freq_loss = separate_losses(pred, gt)
             b = lr.size(0)
@@ -184,13 +222,23 @@ def main():
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
         num_workers=args.num_workers, pin_memory=pin, drop_last=True,
+        persistent_workers=True,
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False,
         num_workers=args.num_workers, pin_memory=pin,
+        persistent_workers=True,
     )
     steps_per_epoch = len(train_loader)
     total_steps = args.epochs * steps_per_epoch
+
+    # Pre-load validation data to GPU for zero-load-time validation
+    logger.info("Pre-loading validation data to GPU...")
+    val_data_gpu = []
+    with torch.inference_mode():
+        for lr, gt, _ in val_loader:
+            val_data_gpu.append((lr.to(device), gt.to(device)))
+    logger.info(f"Pre-loaded {len(val_data_gpu)} validation batches ({len(val_ds)} samples)")
 
     model = create_model(args).to(device)
     if device.type == "cuda":
@@ -215,6 +263,7 @@ def main():
         if wandb_run is not None:
             wandb_run.summary["model_params"] = params
             wandb_run.summary["device"] = str(device)
+    wandb_logger = AsyncWandbLogger(wandb_run)
 
     buf_size = args.wandb_log_step if args.wandb_log_step > 0 else 1
     buf_loss = deque(maxlen=buf_size)
@@ -261,7 +310,7 @@ def main():
             if sample_imgs is None:
                 sample_imgs = (lr[:4, 0].cpu().numpy(), gt[:4, 0].cpu().numpy(),
                                pred[:4, 0].detach().cpu().numpy())
-                log_samples(wandb_run, sample_imgs, global_step)
+                wandb_logger.log_images(sample_imgs, global_step)
 
             l1, ssim_loss, ssim, freq_loss = separate_losses(pred, gt)
             buf_loss.append(loss.item())
@@ -270,8 +319,8 @@ def main():
             buf_ssim.append(ssim.item())
             buf_freq_loss.append(freq_loss.item())
 
-            if global_step % args.wandb_log_step == 0 and wandb_run is not None:
-                wandb_run.log({
+            if global_step % args.wandb_log_step == 0 and wandb_logger.wandb_run is not None:
+                wandb_logger.log({
                     "train/loss": sum(buf_loss) / len(buf_loss),
                     "train/l1": sum(buf_l1) / len(buf_l1),
                     "train/ssim_loss": sum(buf_ssim_loss) / len(buf_ssim_loss),
@@ -282,7 +331,7 @@ def main():
                 }, step=global_step)
 
             if global_step % args.val_every == 0:
-                val_metrics = validate(model, val_loader, device, args.l1_weight, args.ssim_weight, args.freq_weight)
+                val_metrics = validate(model, val_data_gpu, args.l1_weight, args.ssim_weight, args.freq_weight)
                 logger.info(
                     f"[epoch {epoch}/{args.epochs} step {step + 1}/{steps_per_epoch} "
                     f"global_step {global_step}] "
@@ -292,8 +341,7 @@ def main():
                     f"val Freq Loss={val_metrics['val/freq_loss']:.4f} "
                     f"val PSNR={val_metrics['val/psnr']:.2f} dB"
                 )
-                if wandb_run is not None:
-                    wandb_run.log(val_metrics | {"global_step": global_step}, step=global_step)
+                wandb_logger.log(val_metrics | {"global_step": global_step}, step=global_step)
                 if val_metrics["val/loss"] < best_val_loss:
                     best_val_loss = val_metrics["val/loss"]
                     save_checkpoint({
@@ -317,11 +365,11 @@ def main():
     elapsed = time.time() - start
     logger.info(f"training finished in {elapsed/3600:.2f} h")
     logger.info(f"best val loss: {best_val_loss:.4f}")
-    if wandb_run is not None:
-        wandb_run.summary["best_val_loss"] = best_val_loss
-        wandb_run.summary["train_time_h"] = round(elapsed / 3600, 2)
-        wandb_run.summary["global_step"] = global_step
-        wandb_run.finish()
+    if wandb_logger.wandb_run is not None:
+        wandb_logger.wandb_run.summary["best_val_loss"] = best_val_loss
+        wandb_logger.wandb_run.summary["train_time_h"] = round(elapsed / 3600, 2)
+        wandb_logger.wandb_run.summary["global_step"] = global_step
+    wandb_logger.finish()
 
 
 if __name__ == "__main__":
