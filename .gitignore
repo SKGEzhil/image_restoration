@@ -35,6 +35,7 @@ env/
 
 # Data files
 data/
+src/data_1
 *.npy
 
 # Archives
@@ -49,7 +50,7 @@ runs/
 checkpoints/
 src/wandb
 wandb
-src/data_processing/exp_01
+src/data_processing/exp*
 graphify-out
 
 .cortexkit
