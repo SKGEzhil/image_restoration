@@ -1,0 +1,9 @@
+borderline_margin: 0.1
+data_dir: ../data/train/GT
+fft_hf_ratio_cutoff: 0.5
+flagged_grid_n: 30
+lap_var_blur_threshold: 0.002149098
+local_var_flat_threshold: 0.037037893
+local_var_window: 16
+noise_est_noisy_threshold: 0.025784748000000003
+output_dir: ./visualizations

@@ -1,5 +1,6 @@
 """Paired dataset + shared helpers for train.py and test.py."""
 
+import json
 import random
 from pathlib import Path
 
@@ -13,7 +14,8 @@ class PairedDataset(torch.utils.data.Dataset):
     GT: 256x256 float32 in [0, 1]; NoisyLR: 128x128 float32 (unclamped).
     """
 
-    def __init__(self, root, split="train", augment=False, seed=None):
+    def __init__(self, root, split="train", augment=False, seed=None,
+                 exclude_list=None):
         self.root = Path(root)
         self.split = split
         self.augment = augment
@@ -25,6 +27,17 @@ class PairedDataset(torch.utils.data.Dataset):
         gt_files = sorted(p.name for p in gt_dir.glob("*.npy"))
         assert lr_files == gt_files, f"{split}: NoisyLR/GT filenames do not match"
         self.names = lr_files
+
+        # Filter out excluded samples (non-destructive)
+        if exclude_list is not None:
+            exclude_path = Path(exclude_list)
+            if exclude_path.exists():
+                with open(exclude_path) as f:
+                    excluded = set(json.load(f)["excluded"])
+                before = len(self.names)
+                self.names = [n for n in self.names if n not in excluded]
+                print(f"Excluded {before - len(self.names)} samples "
+                      f"({len(self.names)} remaining)")
 
         if len(self.names) == 0:
             raise FileNotFoundError(f"No samples found in {lr_dir}")

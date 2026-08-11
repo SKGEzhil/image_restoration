@@ -50,6 +50,7 @@ def parse_args(config_path=None):
         "seed": 42,
         "run_name": None,
         "resume": None,
+        "exclude_samples": None,
     }
     merged = {**defaults, **config}
     for key in ("data_dir", "resume"):
@@ -179,7 +180,8 @@ def main():
         torch.mps.set_per_process_memory_fraction(0.9)
     pin = device.type != "mps"
 
-    train_ds = PairedDataset(args.data_dir, split="train", augment=True, seed=args.seed)
+    train_ds = PairedDataset(args.data_dir, split="train", augment=True,
+                              seed=args.seed, exclude_list=args.exclude_samples)
     val_ds = PairedDataset(args.data_dir, split="val")
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
