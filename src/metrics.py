@@ -29,8 +29,8 @@ _metrics = _DeviceMetrics()
 
 def compute_ssim(pred, gt):
     """pred/gt: 1-channel float tensors in [0, 1]. Returns mean SSIM."""
-    ssim_loss = kornia.losses.SSIMLoss(window_size=11, max_val=1.0)
-    loss = ssim_loss(pred.clamp(0.0, 1.0), gt)
+    kornia_ssim_loss = kornia.losses.SSIMLoss(window_size=11, max_val=1.0)
+    loss = 2 * kornia_ssim_loss(pred.clamp(0.0, 1.0), gt)
     return 1.0 - loss
 
 
