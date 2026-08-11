@@ -45,7 +45,10 @@ def load_model(checkpoint_path, device):
         img_channel=1,
         drop_out_rate=cfg.get("drop_out_rate", 0.0),
     )
-    model.load_state_dict(ckpt["model"])
+    state_dict = ckpt["model"]
+    # torch.compile prefixes keys with _orig_mod.; strip for vanilla model
+    cleaned = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+    model.load_state_dict(cleaned)
     return model.to(device), ckpt
 
 
@@ -97,7 +100,7 @@ def main():
                 for name, out in zip(names, pred.clamp(0, 1).cpu().numpy()):
                     outputs.append((name, out))
             for name, p, g in zip(names, pred, gt):
-                l1_s, ssim_loss_s, ssim_s = separate_losses(p.unsqueeze(0), g.unsqueeze(0))
+                l1_s, ssim_loss_s, ssim_s, _ = separate_losses(p.unsqueeze(0), g.unsqueeze(0))
                 psnr_s = compute_psnr(p.unsqueeze(0), g.unsqueeze(0))
                 lpips_s = compute_lpips(p.unsqueeze(0), g.unsqueeze(0))
                 per_sample.append({
