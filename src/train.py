@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -41,6 +42,7 @@ def parse_args(config_path=None):
         "wandb_log_step": 5,
         "l1_weight": 0.5,
         "ssim_weight": 0.5,
+        "freq_weight": 0.05,
         "width": 32,
         "num_blks": 8,
         "drop_out_rate": 0.0,
@@ -126,27 +128,33 @@ def log_samples(wandb_run, images, step):
     wandb_run.log({"samples/lr_gt_pred": grid, "train/step": step}, step=step)
 
 
-def validate(model, val_loader, device, l1_weight, ssim_weight):
+def validate(model, val_loader, device, l1_weight, ssim_weight, freq_weight):
     model.eval()
-    total_l1 = total_ssim_loss = total_psnr = 0.0
+    total_l1 = total_ssim_loss = total_psnr = total_freq_loss = total_ssim = 0.0
     num = 0
     with torch.no_grad():
         for lr, gt, _ in val_loader:
             lr, gt = lr.to(device), gt.to(device)
             pred = model(lr)
-            l1, ssim_loss, _ = separate_losses(pred, gt)
+            l1, ssim_loss, ssim, freq_loss = separate_losses(pred, gt)
             b = lr.size(0)
             total_l1 += l1.item() * b
+            total_ssim += ssim.item() * b
             total_ssim_loss += ssim_loss.item() * b
             total_psnr += compute_psnr(pred, gt).item() * b
+            total_freq_loss += freq_loss.item() * b
             num += b
     model.train()
     val_l1 = total_l1 / num
     val_ssim_loss = total_ssim_loss / num
+    val_ssim = total_ssim / num
+    val_freq_loss = total_freq_loss / num
     return {
         "val/l1": val_l1,
         "val/ssim_loss": val_ssim_loss,
-        "val/loss": l1_weight * val_l1 + ssim_weight * val_ssim_loss,
+        "val/ssim": val_ssim,
+        "val/freq_loss": val_freq_loss,
+        "val/loss": l1_weight * val_l1 + ssim_weight * val_ssim_loss + freq_weight * val_freq_loss,
         "val/psnr": total_psnr / num,
     }
 
@@ -188,7 +196,7 @@ def main():
     params = sum(p.numel() for p in model.parameters())
     logger.info(f"model=NAFNet params={params/1e6:.2f}M")
 
-    loss_fn = build_loss(args.l1_weight, args.ssim_weight)
+    loss_fn = build_loss(args.l1_weight, args.ssim_weight, args.freq_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-6)
 
@@ -203,6 +211,13 @@ def main():
         if wandb_run is not None:
             wandb_run.summary["model_params"] = params
             wandb_run.summary["device"] = str(device)
+
+    buf_size = args.wandb_log_step if args.wandb_log_step > 0 else 1
+    buf_loss = deque(maxlen=buf_size)
+    buf_l1 = deque(maxlen=buf_size)
+    buf_ssim_loss = deque(maxlen=buf_size)
+    buf_ssim = deque(maxlen=buf_size)
+    buf_freq_loss = deque(maxlen=buf_size)
 
     if args.resume:
         ckpt = torch.load(args.resume, map_location=device)
@@ -244,25 +259,33 @@ def main():
                                pred[:4, 0].detach().cpu().numpy())
                 log_samples(wandb_run, sample_imgs, global_step)
 
+            l1, ssim_loss, ssim, freq_loss = separate_losses(pred, gt)
+            buf_loss.append(loss.item())
+            buf_l1.append(l1.item())
+            buf_ssim_loss.append(ssim_loss.item())
+            buf_ssim.append(ssim.item())
+            buf_freq_loss.append(freq_loss.item())
+
             if global_step % args.wandb_log_step == 0 and wandb_run is not None:
-                l1, ssim_loss, ssim = separate_losses(pred, gt)
                 wandb_run.log({
-                    "train/loss": loss.item(),
-                    "train/l1": l1.item(),
-                    "train/ssim_loss": ssim_loss.item(),
-                    "train/ssim": ssim.item(),
+                    "train/loss": sum(buf_loss) / len(buf_loss),
+                    "train/l1": sum(buf_l1) / len(buf_l1),
+                    "train/ssim_loss": sum(buf_ssim_loss) / len(buf_ssim_loss),
+                    "train/ssim": sum(buf_ssim) / len(buf_ssim),
+                    "train/freq_loss": sum(buf_freq_loss) / len(buf_freq_loss),
                     "train/lr": scheduler.get_last_lr()[0],
                     "global_step": global_step,
                 }, step=global_step)
 
             if global_step % args.val_every == 0:
-                val_metrics = validate(model, val_loader, device, args.l1_weight, args.ssim_weight)
+                val_metrics = validate(model, val_loader, device, args.l1_weight, args.ssim_weight, args.freq_weight)
                 logger.info(
                     f"[epoch {epoch}/{args.epochs} step {step + 1}/{steps_per_epoch} "
                     f"global_step {global_step}] "
                     f"val loss={val_metrics['val/loss']:.4f} "
                     f"val L1={val_metrics['val/l1']:.4f} "
                     f"val SSIM={1 - val_metrics['val/ssim_loss']:.4f} "
+                    f"val Freq Loss={val_metrics['val/freq_loss']:.4f} "
                     f"val PSNR={val_metrics['val/psnr']:.2f} dB"
                 )
                 if wandb_run is not None:
