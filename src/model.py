@@ -23,18 +23,23 @@ class LayerNormFunction(torch.autograd.Function):
     """Channel-wise LayerNorm with fused backward (as in arch_util.py)."""
 
     @staticmethod
-    def forward(ctx, x, weight, bias, eps):
-        ctx.eps = eps
+    def forward(x, weight, bias, eps):
         n, c, h, w = x.size()
         mu = x.mean(1, keepdim=True)
         var = (x - mu).pow(2).mean(1, keepdim=True)
-        y = (x - mu) / (var + eps).sqrt()
-        ctx.save_for_backward(y, var, weight)
-        y = weight.view(1, c, 1, 1) * y + bias.view(1, c, 1, 1)
-        return y
+        y_norm = (x - mu) / (var + eps).sqrt()
+        y = weight.view(1, c, 1, 1) * y_norm + bias.view(1, c, 1, 1)
+        return y, y_norm, var
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def setup_context(ctx, inputs, output):
+        x, weight, bias, eps = inputs
+        y, y_norm, var = output
+        ctx.eps = eps
+        ctx.save_for_backward(y_norm, var, weight)
+
+    @staticmethod
+    def backward(ctx, grad_output, grad_y_norm, grad_var):
         eps = ctx.eps
         n, c, h, w = grad_output.size()
         y, var, weight = ctx.saved_tensors
@@ -58,7 +63,8 @@ class LayerNorm2d(nn.Module):
         self.eps = eps
 
     def forward(self, x):
-        return LayerNormFunction.apply(x, self.weight, self.bias, self.eps)
+        y, _, _ = LayerNormFunction.apply(x, self.weight, self.bias, self.eps)
+        return y
 
 
 class SimpleGate(nn.Module):

@@ -132,7 +132,7 @@ def validate(model, val_loader, device, l1_weight, ssim_weight, freq_weight):
     model.eval()
     total_l1 = total_ssim_loss = total_psnr = total_freq_loss = total_ssim = 0.0
     num = 0
-    with torch.no_grad():
+    with torch.inference_mode():
         for lr, gt, _ in val_loader:
             lr, gt = lr.to(device), gt.to(device)
             pred = model(lr)
@@ -193,6 +193,10 @@ def main():
     total_steps = args.epochs * steps_per_epoch
 
     model = create_model(args).to(device)
+    if device.type == "cuda":
+        model = torch.compile(model)
+    else:
+        logger.info("torch.compile skipped: only supported on CUDA")
     params = sum(p.numel() for p in model.parameters())
     logger.info(f"model=NAFNet params={params/1e6:.2f}M")
 
