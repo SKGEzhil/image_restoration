@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import PairedDataset, get_device
-from metrics import compute_lpips, compute_psnr, separate_losses
+from metrics import compute_lpips, compute_psnr, compute_ssim
 from models import create_model
 
 
@@ -97,7 +97,7 @@ def main():
     )
 
     model.eval()
-    total_l1 = total_ssim_loss = total_psnr = total_lpips = 0.0
+    total_l1 = total_ssim = total_psnr = total_lpips = 0.0
     num = 0
     outputs = []
     per_sample = []
@@ -106,27 +106,23 @@ def main():
         for lr, gt, names in tqdm(test_loader, desc="Testing", unit="batch"):
             lr, gt = lr.to(device), gt.to(device)
             pred = model(lr)
-            l1, ssim_loss, _, freq_loss = separate_losses(pred, gt)
             b = lr.size(0)
-            total_l1 += l1.item() * b
-            total_ssim_loss += ssim_loss.item() * b
+            total_l1 += torch.nn.functional.l1_loss(pred, gt).item() * b
+            total_ssim += compute_ssim(pred, gt).item() * b
             total_psnr += compute_psnr(pred, gt).item() * b
             total_lpips += compute_lpips(pred, gt).item() * b
-            d = compute_lpips(gt, gt)  # identical image vs itself
-            print("D:", d)  # must be ~0.0000
             num += b
             if args.save_outputs:
                 for name, out in zip(names, pred.clamp(0, 1).cpu().numpy()):
                     outputs.append((name, out))
             for name, p, g in zip(names, pred, gt):
-                l1_s, ssim_loss_s, ssim_s, _ = separate_losses(p.unsqueeze(0), g.unsqueeze(0))
                 psnr_s = compute_psnr(p.unsqueeze(0), g.unsqueeze(0))
+                ssim_s = compute_ssim(p.unsqueeze(0), g.unsqueeze(0))
                 lpips_s = compute_lpips(p.unsqueeze(0), g.unsqueeze(0))
                 per_sample.append({
                     "name": name,
-                    "L1": round(float(l1_s), 6),
+                    "L1": round(float(torch.nn.functional.l1_loss(p.unsqueeze(0), g.unsqueeze(0))), 6),
                     "SSIM": round(float(ssim_s), 6),
-                    "SSIM_loss": round(float(ssim_loss_s), 6),
                     "PSNR": round(float(psnr_s), 6),
                     "LPIPS": round(float(lpips_s), 6),
                 })
@@ -135,8 +131,7 @@ def main():
         "checkpoint": args.checkpoint,
         "num_samples": num,
         "L1": total_l1 / num,
-        "SSIM": 1.0 - total_ssim_loss / num,
-        "SSIM_loss": total_ssim_loss / num,
+        "SSIM": total_ssim / num,
         "PSNR": total_psnr / num,
         "LPIPS": total_lpips / num,
         "elapsed_s": round(time.time() - start, 2),

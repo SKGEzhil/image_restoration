@@ -10,18 +10,84 @@ models:                    # model definitions — add new models here
     drop_out_rate: 0.0
 
 data_dir: data             # paired dataset root (NoisyLR + GT subdirs per split)
-epochs: 40
-batch_size: 8
+epochs: 80
+batch_size: 12
 lr: 0.001
 val_every: 100             # run validation every N training steps
 wandb_log_step: 20         # log metrics to wandb every N steps (0 disables wandb)
-l1_weight: 1
-ssim_weight: 0.2
-freq_weight: 0.05
-num_workers: 2
+
+# ─── Loss configuration ─────────────────────────────────────────────
+# Quick switch via preset, or define custom loss below.
+# Presets: l1, l1_ssim, legacy, combo_1, combo_2, combo_3, combo_4
+# "legacy" = old default: 0.5*L1 + 0.5*SSIM + 0.05*FFT
+loss_config:
+  preset: null
+
+  # Manual config (used if preset is null)
+  mode: additive              # "additive" | "geometric" | "uncertainty"
+  geometric_terms: [charbonnier, ms_ssim]   # for geometric mode — auto-normalized
+  uncertainty_terms: [charbonnier, ms_ssim, gradient, ffl]  # for uncertainty mode
+  uncertainty_init_sigma: 1.0
+
+  losses:
+    l1:
+      enabled: true
+      weight: 1.0
+
+    ssim:
+      enabled: true
+      weight: 0.2
+      window_size: 11
+
+    charbonnier:
+      enabled: false
+      weight: 1.0
+      epsilon: 1e-3
+
+    ms_ssim:
+      enabled: false
+      weight: 0.2
+      window_size: 11
+
+    gradient:
+      enabled: false
+      weight: 0.1
+      kernel: sobel              # "sobel" | "laplacian"
+
+    log_l1:
+      enabled: false
+      weight: 0.3
+      epsilon: 1e-6
+
+    ffl:
+      enabled: false
+      weight: 0.1
+      alpha: 1.0
+      ramp_epochs: 15           # linear ramp 0→weight over first N epochs
+
+    tv:
+      enabled: false
+      weight: 1e-4
+
+    fft:
+      enabled: false
+      weight: 0.05
+
+    laplacian:
+      enabled: false
+      weight: 0.1
+
+    dists:
+      enabled: false
+      weight: 0.05
+
+    # TODO: adversarial (PatchGAN) — enable after epoch 50, needs discriminator
+
+# ─── Training settings ──────────────────────────────────────────────
+num_workers: 0
 seed: 42
 run_name: null             # run id (default: timestamp); also the wandb run name
 resume: null               # path to a last.pt to resume from
-exclude_samples: null      # path to filtered_samples.json to exclude degraded GT (null = use all)
+exclude_samples: "/Users/skgezhil/Projects/AI_ML/Image_Restoration/src/data_processing/filtering/exp_02/outputs/exclude_list.json"      # path to filtered_samples.json to exclude degraded GT (null = use all)
 include_augmented_data: false   # include synthetic augmented samples in training
 augmentation_offset: 3200      # files >= this offset are augmented (e.g., 003200.npy)
