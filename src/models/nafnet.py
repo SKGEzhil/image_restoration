@@ -11,7 +11,7 @@ Faithful port of the architecture from
   a body of NAFBlocks at LR resolution plus a PixelShuffle upsampling head and
   a bilinear-upsampled-input residual. That is what maps 128x128 -> 256x256.
 
-For the SR + denoise task in this repo, `create_model()` returns NAFNetSR.
+For the SR + denoise task in this repo, `create_model_nafnet()` returns NAFNetSR.
 """
 
 import torch
@@ -212,11 +212,12 @@ class NAFNetSR(nn.Module):
         return self.up(feats) + inp_hr
 
 
-def create_model(args):
+def create_model_nafnet(width=32, num_blks=8, img_channel=1, drop_out_rate=0.0, **kwargs):
+    """Factory for NAFNetSR. Matches create_model() signature from original model.py."""
     return NAFNetSR(
         up_scale=2,
-        width=args.width,
-        num_blks=args.num_blks,
-        img_channel=1,
-        drop_out_rate=args.drop_out_rate,
+        width=width,
+        num_blks=num_blks,
+        img_channel=img_channel,
+        drop_out_rate=drop_out_rate,
     )

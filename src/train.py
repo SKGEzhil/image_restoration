@@ -22,7 +22,7 @@ from tqdm import tqdm
 
 from dataset import PairedDataset, get_device, set_seed
 from metrics import build_loss, compute_psnr, compute_ssim, separate_losses
-from model import create_model
+from models import create_model
 
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "src" / "training_config.yaml"
@@ -34,6 +34,8 @@ def parse_args(config_path=None):
         config = yaml.safe_load(f) or {}
     config_dir = config_path.resolve().parent
     defaults = {
+        "train_model": "nafnet",
+        "models": {"nafnet": {"width": 32, "num_blks": 8, "drop_out_rate": 0.0}},
         "data_dir": str(Path(__file__).resolve().parent.parent / "data"),
         "epochs": 3,
         "batch_size": 8,
@@ -43,9 +45,6 @@ def parse_args(config_path=None):
         "l1_weight": 0.5,
         "ssim_weight": 0.5,
         "freq_weight": 0.05,
-        "width": 32,
-        "num_blks": 8,
-        "drop_out_rate": 0.0,
         "num_workers": 2,
         "seed": 42,
         "run_name": None,
@@ -194,13 +193,13 @@ def main():
     steps_per_epoch = len(train_loader)
     total_steps = args.epochs * steps_per_epoch
 
-    model = create_model(args).to(device)
+    model = create_model(name=args.train_model, **args.models[args.train_model]).to(device)
     if device.type == "cuda":
         model = torch.compile(model)
     else:
         logger.info("torch.compile skipped: only supported on CUDA")
     params = sum(p.numel() for p in model.parameters())
-    logger.info(f"model=NAFNet params={params/1e6:.2f}M")
+    logger.info(f"model={args.train_model} params={params/1e6:.2f}M")
 
     loss_fn = build_loss(args.l1_weight, args.ssim_weight, args.freq_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)

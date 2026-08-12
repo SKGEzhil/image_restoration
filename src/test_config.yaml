@@ -1,0 +1,15 @@
+# Test configuration for src/test.py.
+# CLI args override these values when specified.
+
+test_model: nafnet         # model to load (key in models: registry)
+
+models:                    # model definitions — must match training config
+  nafnet:
+    width: 32
+    num_blks: 8
+    drop_out_rate: 0.0
+
+data_dir: data
+batch_size: 16
+num_workers: 2
+save_outputs: false

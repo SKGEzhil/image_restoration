@@ -1,8 +1,9 @@
-"""Evaluate a trained NAFNet on data/test.
+"""Evaluate a trained model on data/test.
 
 Computes the same metrics used during training (L1 + SSIM) plus PSNR and LPIPS.
 Usage:
     python test.py --checkpoint runs/<run_id>/best.pt
+    python test.py --checkpoint runs/<run_id>/best.pt --batch-size 32
 """
 
 import argparse
@@ -14,42 +15,60 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import yaml
 from dotenv import load_dotenv
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import PairedDataset, get_device
 from metrics import compute_lpips, compute_psnr, separate_losses
-from model import NAFNetSR
+from models import create_model
+
+
+DEFAULT_CONFIG = Path(__file__).resolve().parent / "test_config.yaml"
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Test NAFNet on the test split")
+    # Load config as defaults
+    with open(DEFAULT_CONFIG) as f:
+        config = yaml.safe_load(f) or {}
+
+    p = argparse.ArgumentParser(description="Test model on the test split")
     p.add_argument("--checkpoint", type=str, required=True,
                    help="Path to a trained checkpoint .pt file")
-    p.add_argument("--data-dir", type=str, default=str(Path(__file__).resolve().parent / "data"))
-    p.add_argument("--batch-size", type=int, default=16)
-    p.add_argument("--num-workers", type=int, default=2)
-    p.add_argument("--save-outputs", action="store_true",
+    p.add_argument("--test-model", type=str, default=config.get("test_model", "nafnet"),
+                   help="Model name (overrides test_config.yaml)")
+    p.add_argument("--data-dir", type=str, default=config.get("data_dir", "data"),
+                   help="Data directory (overrides test_config.yaml)")
+    p.add_argument("--batch-size", type=int, default=config.get("batch_size", 16),
+                   help="Batch size (overrides test_config.yaml)")
+    p.add_argument("--num-workers", type=int, default=config.get("num_workers", 2),
+                   help="DataLoader workers (overrides test_config.yaml)")
+    p.add_argument("--save-outputs", action="store_true", default=config.get("save_outputs", False),
                    help="Save restored samples as .npy into runs/<run_id>/outputs")
-    return p.parse_args()
+    args = p.parse_args()
+
+    # Store full config for model params lookup
+    args.config = config
+    return args
 
 
-def load_model(checkpoint_path, device):
+def load_model(checkpoint_path, args, device):
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     cfg = ckpt.get("args", {})
-    model = NAFNetSR(
-        up_scale=2,
-        width=cfg.get("width", 32),
-        num_blks=cfg.get("num_blks", 8),
-        img_channel=1,
-        drop_out_rate=cfg.get("drop_out_rate", 0.0),
-    )
+
+    # Model name: prefer checkpoint's saved train_model, fallback to CLI arg
+    model_name = cfg.get("train_model", args.test_model)
+    # Model params: prefer checkpoint's saved models dict, fallback to test_config
+    model_params = cfg.get("models", {}).get(model_name,
+                       args.config.get("models", {}).get(model_name, {}))
+
+    model = create_model(name=model_name, **model_params)
     state_dict = ckpt["model"]
     # torch.compile prefixes keys with _orig_mod.; strip for vanilla model
     cleaned = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
     model.load_state_dict(cleaned)
-    return model.to(device), ckpt
+    return model.to(device), ckpt, model_name
 
 
 def main():
@@ -67,8 +86,8 @@ def main():
     logger.info(f"checkpoint={args.checkpoint}")
     logger.info(f"device={device}")
 
-    model, ckpt = load_model(args.checkpoint, device)
-    logger.info(f"model loaded (train global_step={ckpt.get('global_step')}, "
+    model, ckpt, model_name = load_model(args.checkpoint, args, device)
+    logger.info(f"model={model_name} loaded (train global_step={ckpt.get('global_step')}, "
                 f"best_val_loss={ckpt.get('best_val_loss')})")
 
     test_ds = PairedDataset(args.data_dir, split="test")
