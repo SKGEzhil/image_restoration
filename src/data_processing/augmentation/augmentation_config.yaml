@@ -1,0 +1,116 @@
+# Augmentation Configuration
+# ==========================
+
+# Sampling
+num_augmented_samples: 2500
+sampling_with_replacement: true
+seed: 42
+
+# Numbering offset (first synthetic sample starts at this index)
+offset: 3200
+
+# Exclusion list (optional) - skip these GT samples during augmentation
+# Format: {"excluded": ["000142.npy", "000831.npy", ...]}
+exclude: ../filtering/exp_02/outputs/exclude_list.json  # Set to path like "exclude_list.json" relative to this config
+
+# Source data
+data_dir: ../../data
+split: train
+
+# Noise parameters
+gaussian_sigma_range: [0.05, 0.12]
+speckle_sigma_range: [0.15, 0.28]
+blur_sigma_range: [0.2, 1.5]
+
+# 18 Augmentation recipes
+recipes:
+  - id: 1
+    kernel: bicubic
+    noise: both
+    order: pre
+    percentage: 16.42
+  - id: 2
+    kernel: bicubic
+    noise: both
+    order: post
+    percentage: 25.04
+  - id: 3
+    kernel: bicubic
+    noise: speckle
+    order: pre
+    percentage: 5.47
+  - id: 4
+    kernel: bicubic
+    noise: speckle
+    order: post
+    percentage: 8.35
+  - id: 5
+    kernel: bicubic
+    noise: gaussian
+    order: pre
+    percentage: 5.47
+  - id: 6
+    kernel: bicubic
+    noise: gaussian
+    order: post
+    percentage: 8.35
+  - id: 7
+    kernel: bilinear
+    noise: both
+    order: pre
+    percentage: 3.90
+  - id: 8
+    kernel: bilinear
+    noise: both
+    order: post
+    percentage: 5.94
+  - id: 9
+    kernel: bilinear
+    noise: speckle
+    order: pre
+    percentage: 1.30
+  - id: 10
+    kernel: bilinear
+    noise: speckle
+    order: post
+    percentage: 1.98
+  - id: 11
+    kernel: bilinear
+    noise: gaussian
+    order: pre
+    percentage: 1.30
+  - id: 12
+    kernel: bilinear
+    noise: gaussian
+    order: post
+    percentage: 1.98
+  - id: 13
+    kernel: gaussian-decimate
+    noise: both
+    order: pre
+    percentage: 3.44
+  - id: 14
+    kernel: gaussian-decimate
+    noise: both
+    order: post
+    percentage: 5.25
+  - id: 15
+    kernel: gaussian-decimate
+    noise: speckle
+    order: pre
+    percentage: 1.15
+  - id: 16
+    kernel: gaussian-decimate
+    noise: speckle
+    order: post
+    percentage: 1.75
+  - id: 17
+    kernel: gaussian-decimate
+    noise: gaussian
+    order: pre
+    percentage: 1.15
+  - id: 18
+    kernel: gaussian-decimate
+    noise: gaussian
+    order: post
+    percentage: 1.75

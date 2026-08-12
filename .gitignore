@@ -52,6 +52,8 @@ src/wandb
 wandb
 src/data_processing/filtering/exp_*/outputs
 src/data_processing/augmentation/exp_*/outputs
+src/data_processing/augmentation/analysis/outputs
+src/data_processing/augmentation/outputs
 src/data_processing/metrics.csv
 graphify-out
 

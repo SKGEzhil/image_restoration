@@ -1,0 +1,26 @@
+data_dir: ../../../data
+split: train
+downsample_factor: 2
+
+# Part 1: Kernel matching
+gaussian_sigmas:
+  - 0.2
+  - 0.4
+  - 0.6
+  - 0.8
+  - 1.0
+  - 1.2
+  - 1.5
+flat_percentile: 20
+flat_window: 7
+alignment_upsample: 20
+
+# Part 2: Noise estimation
+num_intensity_bins: 15
+num_clusters: 3
+
+# Part 3: Spectral analysis
+spectral_ratio_threshold: 0.5  # high_freq_energy / low_freq_energy cutoff
+
+# Output
+output_dir: outputs
