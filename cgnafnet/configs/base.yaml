@@ -1,0 +1,37 @@
+data:
+  clean_image_dirs:
+    - src/data/train/GT
+    - src/data/val/GT
+  patch_size: 256
+  regional_mixing: false        # Phase 1b toggle
+  degradation_ranges:
+    speckle_sigma: [0.05, 0.4]
+    gaussian_sigma: [0.01, 0.15]
+    downsample_factor: [1.5, 4.0]
+  true_super_resolution: false  # keep false until fixed-size mode is validated
+
+model:
+  width: 32                     # NAFNet base channel width, tune per latency budget
+  num_stages: 4
+  blocks_per_stage: [2, 2, 4, 2]  # example, tune
+  num_prototypes_per_stage: [3, 3, 3, 3]   # per design doc ablation guidance
+  prompt_dim: 64
+  aux_order_head: true          # train-time only, must be a true no-op at inference
+
+loss:
+  recon_type: charbonnier       # or l1
+  lambda_ssim: 0.2
+  lambda_ortho: 0.01
+  lambda_aux: 0.1
+
+train:
+  batch_size: 16
+  lr: 2e-4
+  epochs: 10
+  lr_halve_epoch_fraction: 0.5
+  optimizer: adam
+  betas: [0.9, 0.999]
+
+inference:
+  latency_budget_ms: 30
+  target_device: cuda:0

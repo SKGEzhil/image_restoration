@@ -8,9 +8,9 @@ dependencies = [
     "lpips>=0.1.4",
     "numpy>=2.5.2",
     "python-dotenv>=1.2.2",
-    "torch>=2.13.0",
+    "torch==2.11.0+cu128",
     "torchmetrics>=1.9.0",
-    "torchvision>=0.28.0",
+    "torchvision==0.26.0+cu128",
     "tqdm>=4.70.0",
     "wandb>=0.28.1",
     "scikit-image>=0.26.0",
@@ -19,4 +19,15 @@ dependencies = [
     "scikit-learn>=1.6.0",
     "scipy>=1.15.0",
     "pyyaml>=6.0",
+    "pytorch-msssim>=1.0.0",
+    "pytest>=9.1.1",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }

@@ -57,5 +57,8 @@ src/data_processing/augmentation/outputs
 src/data_processing/metrics.csv
 graphify-out
 
-
+implementation.md
 .cortexkit
+
+.idea
+.pytest_cache

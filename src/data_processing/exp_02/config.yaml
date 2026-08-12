@@ -1,0 +1,4 @@
+batch_size: 30
+blur_threshold: 0.00121924
+metrics_csv: ./metrics.csv
+noise_threshold: 0.03802102

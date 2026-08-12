@@ -1,0 +1,39 @@
+data:
+  clean_image_dirs:
+    - src/data/train/GT
+  patch_size: 64
+  regional_mixing: false
+  degradation_ranges:
+    speckle_sigma: [0.05, 0.4]
+    gaussian_sigma: [0.01, 0.15]
+    downsample_factor: [1.5, 4.0]
+  true_super_resolution: false
+
+model:
+  width: 8
+  num_stages: 3
+  blocks_per_stage: [1, 1, 2]
+  num_prototypes_per_stage: [3, 3, 3]
+  prompt_dim: 32
+  aux_order_head: true
+
+loss:
+  recon_type: charbonnier
+  lambda_ssim: 0.2
+  lambda_ortho: 0.01
+  lambda_aux: 0.1
+
+train:
+  batch_size: 4
+  lr: 2e-4
+  epochs: 2
+  lr_halve_epoch_fraction: 0.5
+  optimizer: adam
+  betas: [0.9, 0.999]
+  num_workers: 0
+  save_every: 1
+  seed: 42
+
+inference:
+  latency_budget_ms: 30
+  target_device: cuda:0
