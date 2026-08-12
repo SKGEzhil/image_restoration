@@ -50,6 +50,8 @@ def parse_args(config_path=None):
         "run_name": None,
         "resume": None,
         "exclude_samples": None,
+        "include_augmented_data": True,
+        "augmentation_offset": 3200,
     }
     merged = {**defaults, **config}
     for key in ("data_dir", "resume"):
@@ -180,7 +182,9 @@ def main():
     pin = device.type != "mps"
 
     train_ds = PairedDataset(args.data_dir, split="train", augment=True,
-                              seed=args.seed, exclude_list=args.exclude_samples)
+                              seed=args.seed, exclude_list=args.exclude_samples,
+                              include_augmented_data=args.include_augmented_data,
+                              augmentation_offset=args.augmentation_offset)
     val_ds = PairedDataset(args.data_dir, split="val")
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,

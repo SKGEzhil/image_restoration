@@ -15,7 +15,8 @@ class PairedDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, root, split="train", augment=False, seed=None,
-                 exclude_list=None):
+                 exclude_list=None, include_augmented_data=True,
+                 augmentation_offset=3200):
         self.root = Path(root)
         self.split = split
         self.augment = augment
@@ -38,6 +39,14 @@ class PairedDataset(torch.utils.data.Dataset):
                 self.names = [n for n in self.names if n not in excluded]
                 print(f"Excluded {before - len(self.names)} samples "
                       f"({len(self.names)} remaining)")
+
+        # Filter out augmented samples if not included
+        if not include_augmented_data and split == "train":
+            offset_str = f"{augmentation_offset:06d}"
+            before = len(self.names)
+            self.names = [n for n in self.names if n < offset_str]
+            print(f"Excluded augmented data (>= {offset_str}): "
+                  f"{before - len(self.names)} removed ({len(self.names)} remaining)")
 
         if len(self.names) == 0:
             raise FileNotFoundError(f"No samples found in {lr_dir}")

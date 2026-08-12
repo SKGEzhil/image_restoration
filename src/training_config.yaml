@@ -23,3 +23,5 @@ seed: 42
 run_name: null             # run id (default: timestamp); also the wandb run name
 resume: null               # path to a last.pt to resume from
 exclude_samples: null      # path to filtered_samples.json to exclude degraded GT (null = use all)
+include_augmented_data: false   # include synthetic augmented samples in training
+augmentation_offset: 3200      # files >= this offset are augmented (e.g., 003200.npy)
