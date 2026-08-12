@@ -1,15 +1,15 @@
-"""Visualize GT quality metrics — distributions and sample grids.
+"""Visualize GT quality metrics -- distributions and sample grids.
 
-Reads gt_quality_metrics.csv and gt_classifications.json, generates:
+Reads metrics.csv and gt_classifications.json, generates:
 1. Histogram distributions for each metric
 2. Scatter plots (lap_var vs noise_est colored by local_var)
-3. Flagged sample grids — all Mode B samples, batched, sorted best→worst
+3. Flagged sample grids -- all Mode B samples, batched, sorted best->worst
 4. Borderline sample grid (samples near threshold boundaries)
 
-Run: python src/data_processing/visualize_gt_quality.py
-      python src/data_processing/visualize_gt_quality.py --mode flagged
-      python src/data_processing/visualize_gt_quality.py --mode flagged --batch-size 50
-      python src/data_processing/visualize_gt_quality.py --mode borderline
+Run: python src/data_processing/exp_01/visualize.py
+      python src/data_processing/exp_01/visualize.py --mode flagged
+      python src/data_processing/exp_01/visualize.py --mode flagged --batch-size 50
+      python src/data_processing/exp_01/visualize.py --mode borderline
 """
 
 import argparse
@@ -25,15 +25,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
-METRICS_CSV = Path(__file__).parent / ".." / "data" / "train" / "gt_quality_metrics.csv"
-CLASSIFICATIONS_JSON = Path(__file__).parent / ".." / "data" / "train" / "gt_classifications.json"
-GT_DIR = Path(__file__).parent / ".." / "data" / "train" / "GT"
+EXP_DIR = Path(__file__).parent
+FILTERING_DIR = EXP_DIR.parent
+CONFIG_PATH = EXP_DIR / "config.yaml"
+OUTPUT_DIR = EXP_DIR / "outputs"
+VISUALIZATIONS_DIR = OUTPUT_DIR / "visualizations"
 
 
 def load_metrics():
+    metrics_csv = FILTERING_DIR / "metrics.csv"
     rows = []
-    with open(METRICS_CSV) as f:
+    with open(metrics_csv) as f:
         reader = csv.DictReader(f)
         for row in reader:
             rows.append({
@@ -47,9 +49,10 @@ def load_metrics():
 
 
 def load_classifications():
-    if not CLASSIFICATIONS_JSON.exists():
+    path = OUTPUT_DIR / "gt_classifications.json"
+    if not path.exists():
         return None
-    with open(CLASSIFICATIONS_JSON) as f:
+    with open(path) as f:
         return json.load(f)
 
 
@@ -61,8 +64,7 @@ def load_config():
 def get_flagged_rows(rows, classifications):
     """Return only Mode B rows, merged with classification reasons."""
     if classifications is None:
-        return rows  # fallback: use all rows
-
+        return rows
     mode_b = {s["filename"]: s for s in classifications["samples"] if s["mode"] == "B"}
     flagged = []
     for r in rows:
@@ -74,25 +76,18 @@ def get_flagged_rows(rows, classifications):
 
 
 def sort_flagged_best_to_worst(flagged):
-    """Sort flagged samples from best (least degraded) to worst (most degraded).
-
-    Scoring: lower is better (closer to being valid).
-    Combines normalized blur severity + noise severity.
-    """
+    """Sort flagged samples from best (least degraded) to worst (most degraded)."""
     if not flagged:
         return flagged
 
     lap = np.array([r["lap_var"] for r in flagged])
     noise = np.array([r["noise_est"] for r in flagged])
 
-    # Blur severity: lower lap_var = more blurry = higher severity
     lap_severity = 1.0 - (lap - lap.min()) / (lap.max() - lap.min() + 1e-10)
-    # Noise severity: higher noise = worse
     noise_severity = (noise - noise.min()) / (noise.max() - noise.min() + 1e-10)
 
     severity = lap_severity + noise_severity
-    order = np.argsort(severity)  # ascending: best first
-
+    order = np.argsort(severity)
     return [flagged[i] for i in order]
 
 
@@ -159,7 +154,7 @@ def plot_scatter(rows, out_dir):
     plt.close(fig)
 
 
-def plot_flagged_batch(batch, batch_idx, total_batches, out_dir, cols=6):
+def plot_flagged_batch(batch, batch_idx, total_batches, gt_dir, out_dir, cols=6):
     """Render one batch of flagged samples as a grid image."""
     n = len(batch)
     rows_grid = math.ceil(n / cols)
@@ -172,7 +167,7 @@ def plot_flagged_batch(batch, batch_idx, total_batches, out_dir, cols=6):
     for i, sample in enumerate(batch):
         r, c = divmod(i, cols)
         name = sample["filename"]
-        img = np.load(GT_DIR / name)
+        img = np.load(gt_dir / name)
         axes[r, c].imshow(img, cmap="gray", vmin=0, vmax=1)
         reasons_str = ",".join(sample.get("reasons", []))
         axes[r, c].set_title(
@@ -181,8 +176,8 @@ def plot_flagged_batch(batch, batch_idx, total_batches, out_dir, cols=6):
         )
 
     fig.suptitle(
-        f"Flagged GT Samples — Batch {batch_idx + 1}/{total_batches} "
-        f"(best→worst, showing {n} samples)",
+        f"Flagged GT Samples -- Batch {batch_idx + 1}/{total_batches} "
+        f"(best->worst, showing {n} samples)",
         fontsize=13,
     )
     fig.tight_layout()
@@ -193,7 +188,10 @@ def plot_flagged_batch(batch, batch_idx, total_batches, out_dir, cols=6):
 
 
 def plot_flagged_all(rows, out_dir, batch_size, classifications):
-    """All Mode B samples sorted best→worst, saved as batched PNGs."""
+    """All Mode B samples sorted best->worst, saved as batched PNGs."""
+    cfg = load_config()
+    gt_dir = FILTERING_DIR / cfg["gt_dir"]
+
     flagged = get_flagged_rows(rows, classifications)
     flagged = sort_flagged_best_to_worst(flagged)
     total = len(flagged)
@@ -203,14 +201,13 @@ def plot_flagged_all(rows, out_dir, batch_size, classifications):
         return
 
     total_batches = math.ceil(total / batch_size)
-    print(f"  {total} flagged samples → {total_batches} batches of {batch_size}")
+    print(f"  {total} flagged samples -> {total_batches} batches of {batch_size}")
 
     for batch_idx in range(total_batches):
         start = batch_idx * batch_size
         end = min(start + batch_size, total)
-        plot_flagged_batch(flagged[start:end], batch_idx, total_batches, out_dir)
+        plot_flagged_batch(flagged[start:end], batch_idx, total_batches, gt_dir, out_dir)
 
-    # Also save a CSV with the full sorted list
     csv_path = out_dir / "flagged_sorted.csv"
     with open(csv_path, "w") as f:
         f.write("rank,filename,lap_var,noise_est,local_var,reasons\n")
@@ -223,6 +220,7 @@ def plot_flagged_all(rows, out_dir, batch_size, classifications):
 
 def plot_borderline_grid(rows, out_dir, cfg):
     """Grid of samples near threshold boundaries."""
+    gt_dir = FILTERING_DIR / cfg["gt_dir"]
     thresholds = {
         "lap_var": cfg.get("lap_var_blur_threshold"),
         "noise_est": cfg.get("noise_est_noisy_threshold"),
@@ -265,7 +263,7 @@ def plot_borderline_grid(rows, out_dir, cfg):
     for i, (r, reasons) in enumerate(borderline):
         rc, c = divmod(i, cols)
         name = r["filename"]
-        img = np.load(GT_DIR / name)
+        img = np.load(gt_dir / name)
         axes[rc, c].imshow(img, cmap="gray", vmin=0, vmax=1)
         axes[rc, c].set_title(
             f"{name}\n{','.join(reasons)}",
@@ -288,31 +286,30 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config()
-    out_dir = Path(__file__).parent / cfg["output_dir"]
-    out_dir.mkdir(parents=True, exist_ok=True)
+    VISUALIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
     rows = load_metrics()
     classifications = load_classifications()
-    print(f"Loaded {len(rows)} samples from {METRICS_CSV}")
+    print(f"Loaded {len(rows)} samples")
     if classifications:
         n_b = classifications["summary"]["mode_b"]
         print(f"Mode B (flagged): {n_b} samples")
 
     if args.mode in ("all", "distributions"):
         print("\n--- Distribution Plots ---")
-        plot_distributions(rows, out_dir)
+        plot_distributions(rows, VISUALIZATIONS_DIR)
 
     if args.mode in ("all", "scatter"):
         print("\n--- Scatter Plot ---")
-        plot_scatter(rows, out_dir)
+        plot_scatter(rows, VISUALIZATIONS_DIR)
 
     if args.mode in ("all", "flagged"):
         print("\n--- Flagged Sample Grid (all Mode B, batched) ---")
-        plot_flagged_all(rows, out_dir, args.batch_size, classifications)
+        plot_flagged_all(rows, VISUALIZATIONS_DIR, args.batch_size, classifications)
 
     if args.mode in ("all", "borderline"):
         print("\n--- Borderline Sample Grid ---")
-        plot_borderline_grid(rows, out_dir, cfg)
+        plot_borderline_grid(rows, VISUALIZATIONS_DIR, cfg)
 
 
 if __name__ == "__main__":

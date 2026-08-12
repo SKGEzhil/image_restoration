@@ -3,30 +3,30 @@
 Reads gt_classifications.json and outputs filtered_samples.json
 that PairedDataset can load to exclude Mode B samples.
 
-Run: python src/data_processing/generate_exclude_list.py
+Run: python src/data_processing/exp_01/generate_exclude.py
 """
 
 import json
 import sys
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
-CLASSIFICATIONS_JSON = Path(__file__).parent / ".." / "data" / "train" / "gt_classifications.json"
-OUTPUT_JSON = Path(__file__).parent / ".." / "data" / "train" / "filtered_samples.json"
+import yaml
+
+EXP_DIR = Path(__file__).parent
+FILTERING_DIR = EXP_DIR.parent
+CONFIG_PATH = EXP_DIR / "config.yaml"
+OUTPUT_DIR = EXP_DIR / "outputs"
 
 
 def main():
-    if not CLASSIFICATIONS_JSON.exists():
-        print(f"ERROR: {CLASSIFICATIONS_JSON} not found.")
-        print("Run classify_gt.py first.")
+    classifications_path = OUTPUT_DIR / "gt_classifications.json"
+    if not classifications_path.exists():
+        print(f"ERROR: {classifications_path} not found.")
+        print("Run classify.py first.")
         sys.exit(1)
 
-    with open(CLASSIFICATIONS_JSON) as f:
+    with open(classifications_path) as f:
         data = json.load(f)
-
-    with open(CONFIG_PATH) as f:
-        import yaml
-        cfg = yaml.safe_load(f)
 
     excluded = []
     reasons_map = {}
@@ -47,13 +47,14 @@ def main():
         "total_remaining": data["summary"]["total"] - len(excluded),
     }
 
-    OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_JSON, "w") as f:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUTPUT_DIR / "filtered_samples.json"
+    with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
 
     print(f"Excluded: {len(excluded)} samples")
     print(f"Remaining: {output['total_remaining']} samples")
-    print(f"Saved to {OUTPUT_JSON}")
+    print(f"Saved to {out_path}")
 
 
 if __name__ == "__main__":

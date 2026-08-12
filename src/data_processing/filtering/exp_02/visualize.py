@@ -2,11 +2,11 @@
 
 Each dimension gets its own visualization folder with:
 - Distribution histogram with threshold line
-- Batched PNGs of flagged samples sorted worst→best
+- Batched PNGs of flagged samples sorted worst->best
 - Full ranked CSV
 
-Run: python src/data_processing/visualize_exp02.py --dimension noise
-      python src/data_processing/visualize_exp02.py --dimension blur --batch-size 50
+Run: python src/data_processing/exp_02/visualize.py --dimension noise
+      python src/data_processing/exp_02/visualize.py --dimension blur --batch-size 50
 """
 
 import argparse
@@ -21,9 +21,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
-EXP02_DIR = Path(__file__).parent / "exp_02"
-CONFIG_PATH = EXP02_DIR / "config.yaml"
-GT_DIR = Path(__file__).parent / ".." / "data" / "train" / "GT"
+EXP_DIR = Path(__file__).parent
+FILTERING_DIR = EXP_DIR.parent
+CONFIG_PATH = EXP_DIR / "config.yaml"
+OUTPUT_DIR = EXP_DIR / "outputs"
+VISUALIZATIONS_DIR = OUTPUT_DIR / "visualizations"
 
 
 def load_config():
@@ -32,20 +34,18 @@ def load_config():
 
 
 def load_classifications(dimension):
-    path = EXP02_DIR / dimension / "classifications.json"
+    path = OUTPUT_DIR / dimension / "classifications.json"
     with open(path) as f:
         return json.load(f)
 
 
 def get_flagged_sorted(classifications, dimension):
-    """Return flagged samples sorted worst→best."""
+    """Return flagged samples sorted worst->best."""
     flagged = [s for s in classifications["samples"] if s["flagged"]]
 
     if dimension == "noise":
-        # worst = highest noise_est first
         flagged.sort(key=lambda s: s["noise_est"], reverse=True)
     elif dimension == "blur":
-        # worst = lowest lap_var first
         flagged.sort(key=lambda s: s["lap_var"])
 
     return flagged
@@ -69,18 +69,15 @@ def plot_distribution(classifications, dimension, out_dir):
     ax.hist(vals, bins=50, edgecolor="black", alpha=0.7, color="steelblue")
     ax.set_xlabel(metric_label)
     ax.set_ylabel("Count")
-    ax.set_title(f"{dimension.upper()} Dimension — {metric_label}")
+    ax.set_title(f"{dimension.upper()} Dimension -- {metric_label}")
 
-    # threshold line
     if dimension == "noise":
         ax.axvline(threshold, color="red", linestyle="--", linewidth=2, label=thr_label)
-        # shade flagged region
         ax.axvspan(threshold, max(vals), alpha=0.15, color="red")
     else:
         ax.axvline(threshold, color="red", linestyle="--", linewidth=2, label=thr_label)
         ax.axvspan(min(vals), threshold, alpha=0.15, color="red")
 
-    # count annotations
     flagged = sum(1 for s in samples if s["flagged"])
     total = len(samples)
     ax.legend(fontsize=11)
@@ -94,7 +91,7 @@ def plot_distribution(classifications, dimension, out_dir):
     plt.close(fig)
 
 
-def plot_batch(batch, batch_idx, total_batches, dimension, out_dir, cols=6):
+def plot_batch(batch, batch_idx, total_batches, dimension, gt_dir, out_dir, cols=6):
     """Render one batch of flagged samples as a grid."""
     n = len(batch)
     rows_grid = math.ceil(n / cols)
@@ -107,7 +104,7 @@ def plot_batch(batch, batch_idx, total_batches, dimension, out_dir, cols=6):
     for i, sample in enumerate(batch):
         r, c = divmod(i, cols)
         name = sample["filename"]
-        img = np.load(GT_DIR / name)
+        img = np.load(gt_dir / name)
         axes[r, c].imshow(img, cmap="gray", vmin=0, vmax=1)
 
         if dimension == "noise":
@@ -118,8 +115,8 @@ def plot_batch(batch, batch_idx, total_batches, dimension, out_dir, cols=6):
         axes[r, c].set_title(f"{name}\n{val_str}", fontsize=6)
 
     fig.suptitle(
-        f"{dimension.upper()} — Batch {batch_idx + 1}/{total_batches} "
-        f"(worst→best, {n} samples)",
+        f"{dimension.upper()} -- Batch {batch_idx + 1}/{total_batches} "
+        f"(worst->best, {n} samples)",
         fontsize=13,
     )
     fig.tight_layout()
@@ -129,7 +126,7 @@ def plot_batch(batch, batch_idx, total_batches, dimension, out_dir, cols=6):
     plt.close(fig)
 
 
-def plot_all_batches(flagged, dimension, out_dir, batch_size):
+def plot_all_batches(flagged, dimension, gt_dir, out_dir, batch_size):
     """Generate batched PNGs for all flagged samples."""
     total = len(flagged)
     if total == 0:
@@ -137,14 +134,13 @@ def plot_all_batches(flagged, dimension, out_dir, batch_size):
         return
 
     total_batches = math.ceil(total / batch_size)
-    print(f"  {total} flagged samples → {total_batches} batches of {batch_size}")
+    print(f"  {total} flagged samples -> {total_batches} batches of {batch_size}")
 
     for batch_idx in range(total_batches):
         start = batch_idx * batch_size
         end = min(start + batch_size, total)
-        plot_batch(flagged[start:end], batch_idx, total_batches, dimension, out_dir)
+        plot_batch(flagged[start:end], batch_idx, total_batches, dimension, gt_dir, out_dir)
 
-    # CSV
     csv_path = out_dir / "sorted.csv"
     with open(csv_path, "w") as f:
         f.write("rank,filename,lap_var,noise_est,local_var,fft_hf_ratio,flagged\n")
@@ -162,8 +158,11 @@ def main():
 
     cfg = load_config()
     dim = args.dimension
-    out_dir = EXP02_DIR / dim / "visualizations"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    gt_dir = FILTERING_DIR / cfg["gt_dir"]
+    dim_out_dir = OUTPUT_DIR / dim
+    dim_out_dir.mkdir(parents=True, exist_ok=True)
+    vis_dir = dim_out_dir / "visualizations"
+    vis_dir.mkdir(parents=True, exist_ok=True)
 
     classifications = load_classifications(dim)
     flagged = get_flagged_sorted(classifications, dim)
@@ -171,10 +170,10 @@ def main():
           f"{len(flagged)} flagged for {dim}")
 
     print(f"\n--- Distribution ---")
-    plot_distribution(classifications, dim, out_dir)
+    plot_distribution(classifications, dim, vis_dir)
 
     print(f"\n--- Batched Grids ---")
-    plot_all_batches(flagged, dim, out_dir, args.batch_size)
+    plot_all_batches(flagged, dim, gt_dir, vis_dir, args.batch_size)
 
 
 if __name__ == "__main__":

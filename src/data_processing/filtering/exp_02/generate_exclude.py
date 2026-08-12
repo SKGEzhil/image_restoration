@@ -1,22 +1,22 @@
 """Generate separate exclude lists for noise, blur, and combined (exp_02).
 
-Reads classifications from exp_02/noise/ and exp_02/blur/,
-writes exclude_list.json in each folder plus a combined one at exp_02/.
+Reads classifications from outputs/noise/ and outputs/blur/,
+writes exclude_list.json in each folder plus a combined one at outputs/.
 
-Run: python src/data_processing/generate_exclude_exp02.py
+Run: python src/data_processing/exp_02/generate_exclude.py
 """
 
 import json
 import sys
 from pathlib import Path
 
-EXP02_DIR = Path(__file__).parent / "exp_02"
+OUTPUT_DIR = Path(__file__).parent / "outputs"
 
 
 def generate(dimension):
-    cls_path = EXP02_DIR / dimension / "classifications.json"
+    cls_path = OUTPUT_DIR / dimension / "classifications.json"
     if not cls_path.exists():
-        print(f"  ERROR: {cls_path} not found. Run classify_exp02.py first.")
+        print(f"  ERROR: {cls_path} not found. Run classify.py first.")
         return None
 
     with open(cls_path) as f:
@@ -32,7 +32,7 @@ def generate(dimension):
         "total_remaining": data["summary"]["total"] - len(excluded),
     }
 
-    out_path = EXP02_DIR / dimension / "exclude_list.json"
+    out_path = OUTPUT_DIR / dimension / "exclude_list.json"
     with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
 
@@ -59,10 +59,9 @@ def main():
         print(f"  Both:        {len(both)}")
         print(f"  Union:       {len(union)}")
 
-        # Combined exclude list
-        with open(EXP02_DIR / "noise" / "exclude_list.json") as f:
+        with open(OUTPUT_DIR / "noise" / "exclude_list.json") as f:
             noise_data = json.load(f)
-        with open(EXP02_DIR / "blur" / "exclude_list.json") as f:
+        with open(OUTPUT_DIR / "blur" / "exclude_list.json") as f:
             blur_data = json.load(f)
 
         combined = {
@@ -71,7 +70,6 @@ def main():
             "blur_threshold": blur_data["threshold"],
             "excluded": sorted(union),
             "total_excluded": len(union),
-            "total_remaining": 2560 - len(union),
             "breakdown": {
                 "noise_only": len(only_noise),
                 "blur_only": len(only_blur),
@@ -79,10 +77,10 @@ def main():
             },
         }
 
-        combined_path = EXP02_DIR / "exclude_list.json"
+        combined_path = OUTPUT_DIR / "exclude_list.json"
         with open(combined_path, "w") as f:
             json.dump(combined, f, indent=2)
-        print(f"\n  Combined: {len(union)} excluded, {2560 - len(union)} remaining")
+        print(f"\n  Combined: {len(union)} excluded")
         print(f"  Saved {combined_path}")
 
 

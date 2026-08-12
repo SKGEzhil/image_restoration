@@ -50,7 +50,10 @@ runs/
 checkpoints/
 src/wandb
 wandb
-src/data_processing/exp*
+src/data_processing/filtering/exp_*/outputs
+src/data_processing/augmentation/exp_*/outputs
+src/data_processing/metrics.csv
 graphify-out
+
 
 .cortexkit

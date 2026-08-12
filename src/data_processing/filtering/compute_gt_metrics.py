@@ -1,50 +1,54 @@
 """Compute GT quality metrics for all training samples.
 
-Reads config.yaml for parameters, computes lap_var, fft_hf_ratio,
-noise_est, and local_var for every GT image, saves to CSV.
+Computes lap_var, fft_hf_ratio, noise_est, and local_var for every
+GT image, saves to metrics.csv in the filtering folder.
 
-Run: python src/data_processing/compute_gt_metrics.py
+Run: python src/data_processing/filtering/compute_gt_metrics.py
+      python src/data_processing/filtering/compute_gt_metrics.py --gt-dir /path/to/GT
 """
 
+import argparse
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
-import yaml
 from tqdm import tqdm
 
-sys.path.insert(0, str(Path(__file__).parent))
-from metrics import compute_all_metrics
+FILTERING_DIR = Path(__file__).parent
+DEFAULT_GT_DIR = FILTERING_DIR / ".." / ".." / "data" / "train" / "GT"
+OUTPUT_CSV = FILTERING_DIR / "metrics.csv"
 
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
-OUTPUT_CSV = Path(__file__).parent / ".." / "data" / "train" / "gt_quality_metrics.csv"
+sys.path.insert(0, str(FILTERING_DIR))
+from metrics import compute_all_metrics
 
 
 def main():
-    with open(CONFIG_PATH) as f:
-        cfg = yaml.safe_load(f)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gt-dir", type=Path, default=DEFAULT_GT_DIR,
+                        help="Path to GT images directory (default: src/data/train/GT)")
+    parser.add_argument("--hf-cutoff", type=float, default=0.5,
+                        help="FFT high-frequency cutoff (default: 0.5)")
+    parser.add_argument("--local-var-window", type=int, default=16,
+                        help="Local variance window size (default: 16)")
+    args = parser.parse_args()
 
-    gt_dir = Path(__file__).parent / cfg["data_dir"]
+    gt_dir = args.gt_dir.resolve()
     gt_files = sorted(gt_dir.glob("*.npy"))
     print(f"Found {len(gt_files)} GT samples in {gt_dir}")
-
-    hf_cutoff = cfg.get("fft_hf_ratio_cutoff", 0.5)
-    local_var_window = cfg.get("local_var_window", 16)
 
     results = []
     t0 = time.time()
     for path in tqdm(gt_files, desc="Computing metrics"):
         img = np.load(path)
-        m = compute_all_metrics(img, hf_cutoff=hf_cutoff, local_var_window=local_var_window)
+        m = compute_all_metrics(img, hf_cutoff=args.hf_cutoff,
+                                local_var_window=args.local_var_window)
         m["filename"] = path.name
         results.append(m)
 
     elapsed = time.time() - t0
     print(f"\nComputed metrics for {len(results)} samples in {elapsed:.1f}s")
 
-    # Save CSV
-    OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     header = "filename,lap_var,fft_hf_ratio,noise_est,local_var"
     with open(OUTPUT_CSV, "w") as f:
         f.write(header + "\n")
@@ -65,7 +69,6 @@ def main():
         arr = np.array(vals)
         print(f"  {name:15s}  min={arr.min():.6f}  median={np.median(arr):.6f}  "
               f"mean={arr.mean():.6f}  max={arr.max():.6f}  std={arr.std():.6f}")
-        # percentiles
         for p in [1, 5, 10, 25, 75, 90, 95, 99]:
             print(f"{'':18s}  p{p:02d}={np.percentile(arr, p):.6f}")
 
