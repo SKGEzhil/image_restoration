@@ -54,6 +54,8 @@ RUNPOD_POD_ID=${RUNPOD_POD_ID:-""}       # e.g. "abc123-def456"
 RUNPOD_API_KEY=${RUNPOD_API_KEY:-""}     # needed only for SHUTDOWN_MODE=terminate
 
 # ── State files ────────────────────────────────────────────────
+ABORTED=0
+
 RUN_DIR=".parallel_runs_$$"
 mkdir -p "$RUN_DIR"
 STATUS_DIR="$RUN_DIR/status"
@@ -61,8 +63,27 @@ PID_FILE="$RUN_DIR/child_pids"
 mkdir -p "$STATUS_DIR"
 : > "$PID_FILE"
 
-# ── Cleanup ────────────────────────────────────────────────────
+# ── Cleanup (EXIT handler) ─────────────────────────────────────
 cleanup() {
+  wait 2>/dev/null || true
+  rm -rf "$RUN_DIR"
+  tput cnorm 2>/dev/null || true
+  stty sane 2>/dev/null || true
+
+  if [[ "$ABORTED" -ne 1 ]]; then
+    runpod_shutdown
+  else
+    echo ""
+    echo "=== RunPod shutdown SKIPPED — pod is still running ==="
+    echo "=== Re-run this script to resume or shut down manually ==="
+  fi
+}
+
+# ── Signal handlers ────────────────────────────────────────────
+handle_sigint() {
+  ABORTED=1
+  echo ""
+  echo "=== Ctrl+C — killing all running jobs (pod will NOT be shut down) ==="
   # Kill all tracked child processes
   if [[ -f "$PID_FILE" ]]; then
     while IFS= read -r pid; do
@@ -73,12 +94,11 @@ cleanup() {
   fi
   # Kill any remaining background jobs
   jobs -p 2>/dev/null | xargs -r kill 2>/dev/null || true
-  wait 2>/dev/null || true
-  rm -rf "$RUN_DIR"
-  tput cnorm 2>/dev/null || true
-  stty sane 2>/dev/null || true
+  exit 130
 }
-trap cleanup EXIT INT TERM
+
+trap cleanup EXIT
+trap handle_sigint INT TERM
 
 track_pid() {
   echo "$1" >> "$PID_FILE"
@@ -269,7 +289,7 @@ monitor() {
     printf "║  ✔ %d done   ▶ %d running   ○ %d queued   ✘ %d failed   ⏱ %d timeout%-40s║\n" \
       "$done_count" "$running_count" \
       "$(($(count_state queued)))" "$failed_count" "$timeout_count" ""
-    echo "║  Press Ctrl+C to abort all jobs                                                                    ║"
+    echo "║  Press Ctrl+C to abort (pod stays running)                                                       ║"
     printf "║  [refreshing every %ds — %s]%-75s║\n" \
       "$REFRESH_SECS" "$(date +%H:%M:%S)" ""
     echo "╚═══════════════════════════════════════════════════════════════════════════════════════════════════════╝"
@@ -420,6 +440,3 @@ done
 if ! $has_failures; then
   echo "=== All presets completed successfully ==="
 fi
-
-# ── RunPod shutdown ────────────────────────────────────────────
-runpod_shutdown

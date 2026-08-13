@@ -42,17 +42,28 @@ def log_l1_loss(pred, gt, epsilon=1e-6):
                      torch.log(gt.clamp(min=0) + epsilon))
 
 
+_ssim_cache = {}
+
+
 def ssim_loss(pred, gt, window_size=11, **kwargs):
     """2 * SSIMLoss. Requires kornia."""
-    import kornia
-    loss_fn = kornia.losses.SSIMLoss(window_size=window_size, max_val=1.0).to(pred.device)
-    return 2.0 * loss_fn(pred.clamp(0.0, 1.0), gt)
+    key = (pred.device, window_size)
+    if key not in _ssim_cache:
+        import kornia
+        _ssim_cache[key] = kornia.losses.SSIMLoss(window_size=window_size, max_val=1.0).to(pred.device)
+    return 2.0 * _ssim_cache[key](pred.clamp(0.0, 1.0), gt)
+
+
+_msssim_cache = {}
+
 
 def ms_ssim_loss(pred, gt, compensation=1.0, **kwargs):
     """1 - MS-SSIM. Requires kornia >= 0.8."""
-    import kornia
-    loss_fn = kornia.losses.MS_SSIMLoss(alpha=1.0, compensation=compensation).to(pred.device)
-    return loss_fn(pred.clamp(0.0, 1.0), gt)
+    key = (pred.device, compensation)
+    if key not in _msssim_cache:
+        import kornia
+        _msssim_cache[key] = kornia.losses.MS_SSIMLoss(alpha=1.0, compensation=compensation).to(pred.device)
+    return _msssim_cache[key](pred.clamp(0.0, 1.0), gt)
 
 
 def gradient_loss(pred, gt, kernel="sobel"):
@@ -108,12 +119,26 @@ def tv_loss(pred):
             torch.mean(torch.abs(pred[:, :, :-1, :] - pred[:, :, 1:, :])))
 
 
-def dists_loss(pred, gt):
-    """DISTS perceptual loss. Placeholder — requires pretrained model."""
-    raise NotImplementedError(
-        "DISTS loss not yet implemented. "
-        "Needs: https://github.com/waveletsh/pytorch-DISTS"
-    )
+def psnr_loss(pred, gt, epsilon=1e-8):
+    """Negative PSNR as a loss: -10 * log10(1 / MSE)."""
+    mse = F.mse_loss(pred, gt)
+    return -10.0 * torch.log10(1.0 / (mse + epsilon))
+
+
+_dists_model = None  # lazy singleton
+
+
+def dists_loss(pred, gt, pretrained=True):
+    """DISTS perceptual loss (Deep Image Structure and Texture Similarity).
+
+    Uses a VGG16 backbone with L2 pooling and learned alpha/beta weights.
+    Requires torchvision for VGG16 weights.
+    """
+    global _dists_model
+    if _dists_model is None:
+        from dists_module import create_dists_model
+        _dists_model = create_dists_model(pred.device, pretrained=pretrained)
+    return _dists_model(pred, gt)
 
 
 # ─── Registry ───────────────────────────────────────────────────────
@@ -130,6 +155,7 @@ LOSS_REGISTRY = OrderedDict([
     ("fft", fft_loss),
     ("ffl", ffl_loss),
     ("tv", tv_loss),
+    ("psnr", psnr_loss),
     ("dists", dists_loss),
     # TODO: "adversarial" — PatchGAN discriminator loss (late-stage only)
 ])
