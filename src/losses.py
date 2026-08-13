@@ -125,6 +125,20 @@ def psnr_loss(pred, gt, epsilon=1e-8):
     return -10.0 * torch.log10(1.0 / (mse + epsilon))
 
 
+# ─── GAN Loss Helpers (used directly by train.py, not in LossCombinator) ───
+
+def lsgan_loss(discriminator_logits, target_is_real=True):
+    """LSGAN least-squares adversarial loss.
+
+    Args:
+        discriminator_logits: raw output from the discriminator.
+        target_is_real: if True, target is ones (generator wants D(fake)=1);
+                        if False, target is zeros (discriminator wants D(fake)=0).
+    """
+    target = torch.ones_like(discriminator_logits) if target_is_real else torch.zeros_like(discriminator_logits)
+    return F.mse_loss(discriminator_logits, target)
+
+
 _dists_model = None  # lazy singleton
 
 
@@ -157,7 +171,6 @@ LOSS_REGISTRY = OrderedDict([
     ("tv", tv_loss),
     ("psnr", psnr_loss),
     ("dists", dists_loss),
-    # TODO: "adversarial" — PatchGAN discriminator loss (late-stage only)
 ])
 
 

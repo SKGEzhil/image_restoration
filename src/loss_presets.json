@@ -118,5 +118,29 @@
         "window_size": 11
       }
     }
+  },
+
+  "scunet_l1": {
+    "mode": "additive",
+    "losses": {
+      "l1": {
+        "enabled": true,
+        "weight": 1.0
+      }
+    }
+  },
+
+  "scunet_gan": {
+    "mode": "additive",
+    "losses": {
+      "l1": {
+        "enabled": true,
+        "weight": 1.0
+      },
+      "dists": {
+        "enabled": true,
+        "weight": 0.1
+      }
+    }
   }
 }

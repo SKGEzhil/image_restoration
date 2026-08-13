@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import PairedDataset, get_device, set_seed
-from losses import build_loss
+from losses import build_loss, lsgan_loss
 from metrics import compute_psnr, compute_ssim
 from models import create_model
 
@@ -44,6 +44,8 @@ def parse_args(config_path=None):
         "val_every": 50,
         "wandb_log_step": 5,
         "loss_config": {"preset": "l1_ssim_baseline"},
+        "scheduler": {"type": "cosine"},
+        "gan_training": {"enabled": False},
         "num_workers": 2,
         "seed": 42,
         "run_name": None,
@@ -228,12 +230,46 @@ def main():
     params = sum(p.numel() for p in model.parameters())
     logger.info(f"model={args.train_model} params={params/1e6:.2f}M")
 
+    # ─── GAN: discriminator setup ───────────────────────────────────────
+    discriminator = None
+    d_optimizer = None
+    d_scheduler = None
+    gan_cfg = getattr(args, "gan_training", {})
+    use_gan = gan_cfg.get("enabled", False)
+    if use_gan:
+        from models.discriminator import create_discriminator
+        d_cfg = gan_cfg.get("discriminator", {})
+        in_ch = args.models[args.train_model].get("in_nc", 1)
+        discriminator = create_discriminator(
+            input_nc=in_ch,
+            ndf=d_cfg.get("ndf", 64),
+            n_layers=d_cfg.get("n_layers", 3),
+            use_spectral_norm=d_cfg.get("use_spectral_norm", True),
+        ).to(device)
+        d_params = sum(p.numel() for p in discriminator.parameters())
+        logger.info(f"discriminator params={d_params/1e6:.2f}M")
+        d_lr = gan_cfg.get("discriminator_lr", 1e-4)
+        d_optimizer = torch.optim.Adam(discriminator.parameters(), lr=d_lr, betas=(0.9, 0.999))
+        logger.info(f"GAN training enabled (D lr={d_lr})")
+
+    # ─── Loss & Optimizer ─────────────────────────────────────────────
     loss_fn = build_loss(args.loss_config, device=device)
     optimizer = torch.optim.Adam(
         list(model.parameters()) + loss_fn.log_sigma_sq_params,
         lr=args.lr,
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-6)
+
+    # ─── Scheduler selection ──────────────────────────────────────────
+    sched_cfg = getattr(args, "scheduler", {})
+    sched_type = sched_cfg.get("type", "cosine")
+    if sched_type == "step":
+        step_size = sched_cfg.get("step_size", 200000)
+        gamma = sched_cfg.get("step_gamma", 0.5)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+        logger.info(f"scheduler=StepLR (step_size={step_size}, gamma={gamma})")
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-6)
+        logger.info(f"scheduler=CosineAnnealingLR (T_max={total_steps})")
 
     epochs_elapsed = 0
     steps_elapsed = 0
@@ -262,6 +298,11 @@ def main():
         global_step = ckpt["global_step"]
         best_val_loss = ckpt.get("best_val_loss", float("inf"))
         loss_fn.load_params(ckpt.get("loss_params", {}))
+        if use_gan and "discriminator" in ckpt:
+            discriminator.load_state_dict(ckpt["discriminator"])
+            d_optimizer.load_state_dict(ckpt["d_optimizer"])
+            if "d_scheduler" in ckpt:
+                d_scheduler.load_state_dict(ckpt["d_scheduler"])
         logger.info(f"resumed from {args.resume} (epoch={epochs_elapsed} step={steps_elapsed})")
 
     start = time.time()
@@ -278,10 +319,35 @@ def main():
 
             optimizer.zero_grad(set_to_none=True)
             pred = model(lr)
-            loss = loss_fn(pred, gt)
+
+            # Pixel-space loss (L1, DISTS, etc.)
+            loss_pixel = loss_fn(pred, gt)
+            loss = loss_pixel
+
+            # ─── GAN branch: generator adversarial loss ─────────────────
+            if use_gan:
+                d_fake = discriminator(pred)
+                loss_adv = lsgan_loss(d_fake, target_is_real=True)
+                w_adv = gan_cfg.get("loss_weights", {}).get("adv", 0.1)
+                loss = loss + w_adv * loss_adv
+
             loss.backward()
             optimizer.step()
             scheduler.step()
+
+            # ─── GAN branch: discriminator update ───────────────────────
+            if use_gan and (global_step % gan_cfg.get("discriminator_update_freq", 1) == 0):
+                d_optimizer.zero_grad(set_to_none=True)
+                d_real = discriminator(gt)
+                d_fake = discriminator(pred.detach())
+                loss_d_real = lsgan_loss(d_real, target_is_real=True)
+                loss_d_fake = lsgan_loss(d_fake, target_is_real=False)
+                loss_d = (loss_d_real + loss_d_fake) * 0.5
+                loss_d.backward()
+                d_optimizer.step()
+                if d_scheduler is not None:
+                    d_scheduler.step()
+
             lr_val = scheduler.get_last_lr()[0]
             global_step += 1
 
@@ -301,6 +367,15 @@ def main():
                 if name not in buf_components:
                     buf_components[name] = deque(maxlen=buf_size)
                 buf_components[name].append(val)
+
+            # Buffer GAN metrics for logging
+            if use_gan:
+                if "adv" not in buf_components:
+                    buf_components["adv"] = deque(maxlen=buf_size)
+                buf_components["adv"].append(loss_adv.item())
+                if "d_loss" not in buf_components:
+                    buf_components["d_loss"] = deque(maxlen=buf_size)
+                buf_components["d_loss"].append(loss_d.item())
 
             if global_step % args.wandb_log_step == 0 and wandb_run is not None:
                 log_dict = {
@@ -329,17 +404,20 @@ def main():
                     wandb_run.log(val_metrics | {"global_step": global_step}, step=global_step)
                 if val_metrics["val/loss"] < best_val_loss:
                     best_val_loss = val_metrics["val/loss"]
-                    save_checkpoint({
+                    ckpt_best = {
                         "model": model.state_dict(),
                         "epoch": epoch, "step": step + 1, "global_step": global_step,
                         "best_val_loss": best_val_loss,
                         "val_metrics": val_metrics,
                         "loss_params": loss_fn.get_params(),
                         "args": vars(args),
-                    }, run_dir / "best.pt")
+                    }
+                    if use_gan:
+                        ckpt_best["discriminator"] = discriminator.state_dict()
+                    save_checkpoint(ckpt_best, run_dir / "best.pt")
                     logger.info(f"best model updated (val loss={best_val_loss:.4f})")
 
-        save_checkpoint({
+        ckpt_last = {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
             "scheduler": scheduler.state_dict(),
@@ -347,7 +425,13 @@ def main():
             "best_val_loss": best_val_loss,
             "loss_params": loss_fn.get_params(),
             "args": vars(args),
-        }, run_dir / "last.pt")
+        }
+        if use_gan:
+            ckpt_last["discriminator"] = discriminator.state_dict()
+            ckpt_last["d_optimizer"] = d_optimizer.state_dict()
+            if d_scheduler is not None:
+                ckpt_last["d_scheduler"] = d_scheduler.state_dict()
+        save_checkpoint(ckpt_last, run_dir / "last.pt")
 
     elapsed = time.time() - start
     logger.info(f"training finished in {elapsed/3600:.2f} h")

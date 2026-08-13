@@ -1,7 +1,31 @@
 # Training configuration for src/train.py.
 # All values are optional; anything omitted falls back to train.py defaults.
 
-train_model: nafnet        # model to train (key in models: registry)
+# ─── SCUNet paper replication notes ───────────────────────────────────
+# Standard SCUNet (same-size denoising):
+#   train_model: scunet
+#   loss_config.preset: scunet_l1
+# SCUNet-real (practical blind denoising, heavier config):
+#   train_model: scunet_real
+#   loss_config.preset: scunet_l1
+# SCUNetSR (super-resolution 128x128 -> 256x256):
+#   train_model: scunet_sr
+#   loss_config.preset: scunet_l1
+# SCUNetSR-real (heavier SR variant):
+#   train_model: scunet_sr_real
+#   loss_config.preset: scunet_l1
+# SCUNetG (GAN-trained for perceptual quality):
+#   train_model: scunet_sr
+#   gan_training.enabled: true
+#   loss_config.preset: scunet_gan
+#   gan_training.pretrain_epochs: N  # epochs of L1-only pretraining
+# Paper settings (synthetic Gaussian denoising):
+#   lr: 0.0001, batch_size: 24, patch_size: 128, loss: L1 only
+#   scheduler: step decay x0.5 every 200k iters (ends at 3.125e-6)
+#   (Use scheduler.type: step with step_size: 200000, gamma: 0.5)
+# ──────────────────────────────────────────────────────────────────────
+
+train_model: scunet_sr        # model to train (key in models: registry)
 
 models:                    # model definitions — add new models here
   nafnet:
@@ -9,19 +33,83 @@ models:                    # model definitions — add new models here
     num_blks: 8
     drop_out_rate: 0.0
 
-data_dir: data             # paired dataset root (NoisyLR + GT subdirs per split)
-epochs: 80
-batch_size: 12
-lr: 0.001
-val_every: 100             # run validation every N training steps
-wandb_log_step: 20         # log metrics to wandb every N steps (0 disables wandb)
+  # SCUNet (same-size denoising) — paper standard config
+  scunet:
+    in_nc: 1
+    config: [2, 2, 2, 2, 2, 2, 2]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
 
-# ─── Loss configuration ─────────────────────────────────────────────
+  # SCUNet-real (heavier config for practical blind denoising)
+  scunet_real:
+    in_nc: 1
+    config: [4, 4, 4, 4, 4, 4, 4]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
+
+  # SCUNetSR (super-resolution variant, 128 -> 256)
+  scunet_sr:
+    in_nc: 1
+    config: [2, 2, 2, 2, 2, 2, 2]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
+    up_scale: 2
+
+  # SCUNetSR-real (heavier SR variant)
+  scunet_sr_real:
+    in_nc: 1
+    config: [4, 4, 4, 4, 4, 4, 4]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
+    up_scale: 2
+
+data_dir: data             # paired dataset root (NoisyLR + GT subdirs per split)
+epochs: 40
+batch_size: 12
+lr: 0.0001
+val_every: 100             # run validation every N training steps
+wandb_log_step: 100         # log metrics to wandb every N steps (0 disables wandb)
+
+# ─── Scheduler configuration ──────────────────────────────────────────
+# "cosine"  -> CosineAnnealingLR (default, current behavior)
+# "step"    -> StepLR with configurable step_size and gamma
+scheduler:
+  type: step             # "cosine" | "step"
+  step_size: 200000        # for step scheduler: decay every N steps
+  gamma: 0.5               # for step scheduler: LR multiplier
+
+# ─── GAN training configuration ───────────────────────────────────────
+# Set enabled: true to activate adversarial training (SCUNetG mode).
+# When enabled, train.py instantiates a PatchGAN discriminator and
+# trains with L1 + DISTS + adversarial loss.
+gan_training:
+  enabled: false
+  # Discriminator architecture
+  discriminator:
+    ndf: 64
+    n_layers: 3
+    use_spectral_norm: true
+  # Loss weights (applied on top of the pixel-loss preset)
+  loss_weights:
+    adv: 0.1
+  # Number of epochs to pretrain with pixel loss only before
+  # activating the adversarial component (0 = no pretraining)
+  pretrain_epochs: 0
+  # Update discriminator every N training steps
+  discriminator_update_freq: 1
+  discriminator_lr: 0.0001
+
+# ─── Loss configuration ───────────────────────────────────────────────
 # Quick switch via preset, or define custom loss below.
-# Presets: l1, l1_ssim, legacy, combo_1, combo_2, combo_3, combo_4
+# Presets: l1, l1_ssim, legacy, combo_1, combo_2, combo_3, combo_4,
+#          scunet_l1, scunet_gan
 # "legacy" = old default: 0.5*L1 + 0.5*SSIM + 0.05*FFT
 loss_config:
-  preset: null
+  preset: scunet_l1
 
   # Manual config (used if preset is null)
   mode: additive              # "additive" | "geometric" | "uncertainty"
@@ -81,9 +169,7 @@ loss_config:
       enabled: false
       weight: 0.05
 
-    # TODO: adversarial (PatchGAN) — enable after epoch 50, needs discriminator
-
-# ─── Training settings ──────────────────────────────────────────────
+# ─── Training settings ────────────────────────────────────────────────
 num_workers: 0
 seed: 42
 run_name: null             # run id (default: timestamp); also the wandb run name

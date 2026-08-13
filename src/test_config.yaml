@@ -9,6 +9,36 @@ models:                    # model definitions — must match training config
     num_blks: 8
     drop_out_rate: 0.0
 
+  scunet:
+    in_nc: 1
+    config: [2, 2, 2, 2, 2, 2, 2]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
+
+  scunet_real:
+    in_nc: 1
+    config: [4, 4, 4, 4, 4, 4, 4]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
+
+  scunet_sr:
+    in_nc: 1
+    config: [2, 2, 2, 2, 2, 2, 2]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
+    up_scale: 2
+
+  scunet_sr_real:
+    in_nc: 1
+    config: [4, 4, 4, 4, 4, 4, 4]
+    dim: 64
+    drop_path_rate: 0.0
+    input_resolution: 128
+    up_scale: 2
+
 data_dir: data
 batch_size: 16
 num_workers: 2
