@@ -59,7 +59,7 @@
     "mode": "additive",
     "losses": {
       "l1": { "enabled": true, "weight": 1.0 },
-      "ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 }
+      "ssim": { "enabled": true, "weight": 0.2 }
     }
   },
 

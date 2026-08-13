@@ -42,16 +42,16 @@ def log_l1_loss(pred, gt, epsilon=1e-6):
                      torch.log(gt.clamp(min=0) + epsilon))
 
 
-def ssim_loss(pred, gt, window_size=11):
+def ssim_loss(pred, gt, window_size=11, **kwargs):
     """2 * SSIMLoss. Requires kornia."""
     import kornia
-    loss_fn = kornia.losses.SSIMLoss(window_size=window_size, max_val=1.0)
+    loss_fn = kornia.losses.SSIMLoss(window_size=window_size, max_val=1.0).to(pred.device)
     return 2.0 * loss_fn(pred.clamp(0.0, 1.0), gt)
 
-def ms_ssim_loss(pred, gt, compensation=1.0):
+def ms_ssim_loss(pred, gt, compensation=1.0, **kwargs):
     """1 - MS-SSIM. Requires kornia >= 0.8."""
     import kornia
-    loss_fn = kornia.losses.MS_SSIMLoss(alpha=1.0, compensation=compensation)
+    loss_fn = kornia.losses.MS_SSIMLoss(alpha=1.0, compensation=compensation).to(pred.device)
     return loss_fn(pred.clamp(0.0, 1.0), gt)
 
 
@@ -226,13 +226,17 @@ class LossCombinator:
 
         # Compute all enabled losses
         loss_vals = {}
+        import inspect
         for entry in self._losses:
             name = entry["name"]
             try:
                 val = entry["fn"](pred, gt, **entry["params"])
             except TypeError:
-                # Some losses (e.g. tv_loss) don't take gt
-                val = entry["fn"](pred)
+                sig = inspect.signature(entry["fn"])
+                if "gt" not in sig.parameters:
+                    val = entry["fn"](pred, **entry["params"])
+                else:
+                    raise
             loss_vals[name] = val
             self._components[name] = val.item()
 
@@ -286,13 +290,18 @@ class LossCombinator:
 
     def get_components(self, pred, gt):
         """Return {name: value} dict for logging."""
+        import inspect
         with torch.no_grad():
             for entry in self._losses:
                 name = entry["name"]
                 try:
                     val = entry["fn"](pred, gt, **entry["params"])
                 except TypeError:
-                    val = entry["fn"](pred)
+                    sig = inspect.signature(entry["fn"])
+                    if "gt" not in sig.parameters:
+                        val = entry["fn"](pred, **entry["params"])
+                    else:
+                        raise
                 self._components[name] = val.item()
         return dict(self._components)
 
