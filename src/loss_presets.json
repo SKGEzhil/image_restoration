@@ -23,7 +23,7 @@
   "ms_ssim": {
     "mode": "additive",
     "losses": {
-      "ms_ssim": { "enabled": true, "weight": 1.0 }
+      "ms_ssim": { "enabled": true, "weight": 1.0, "compensation": 1.0 }
     }
   },
 
@@ -59,7 +59,7 @@
     "mode": "additive",
     "losses": {
       "l1": { "enabled": true, "weight": 1.0 },
-      "ssim": { "enabled": true, "weight": 0.2 }
+      "ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 }
     }
   },
 
@@ -67,7 +67,7 @@
     "mode": "additive",
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 }
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 }
     }
   },
 
@@ -75,7 +75,7 @@
     "mode": "additive",
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "gradient": { "enabled": true, "weight": 0.1, "kernel": "sobel" }
     }
   },
@@ -84,7 +84,7 @@
     "mode": "additive",
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "gradient": { "enabled": true, "weight": 0.1, "kernel": "sobel" },
       "ffl": { "enabled": true, "weight": 0.1, "alpha": 1.0, "ramp_epochs": 15 }
     }
@@ -94,7 +94,7 @@
     "mode": "additive",
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "log_l1": { "enabled": true, "weight": 0.3, "epsilon": 1e-6 }
     }
   },
@@ -103,7 +103,7 @@
     "mode": "additive",
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "log_l1": { "enabled": true, "weight": 0.3, "epsilon": 1e-6 },
       "ffl": { "enabled": true, "weight": 0.1, "alpha": 1.0, "ramp_epochs": 15 }
     }
@@ -113,7 +113,7 @@
     "mode": "additive",
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "gradient": { "enabled": true, "weight": 0.1, "kernel": "sobel" },
       "ffl": { "enabled": true, "weight": 0.1, "alpha": 1.0, "ramp_epochs": 15 },
       "tv": { "enabled": true, "weight": 1e-4 }
@@ -125,7 +125,7 @@
     "geometric_terms": ["charbonnier", "ms_ssim"],
     "losses": {
       "charbonnier": { "enabled": true, "weight": 0.6, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.4 }
+      "ms_ssim": { "enabled": true, "weight": 0.4, "compensation": 1.0 }
     }
   },
 
@@ -134,7 +134,7 @@
     "geometric_terms": ["charbonnier", "ms_ssim"],
     "losses": {
       "charbonnier": { "enabled": true, "weight": 0.6, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.4 },
+      "ms_ssim": { "enabled": true, "weight": 0.4, "compensation": 1.0 },
       "ffl": { "enabled": true, "weight": 0.1, "alpha": 1.0, "ramp_epochs": 15 }
     }
   },
@@ -144,7 +144,7 @@
     "geometric_terms": ["charbonnier", "ms_ssim", "gradient"],
     "losses": {
       "charbonnier": { "enabled": true, "weight": 0.45, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.35 },
+      "ms_ssim": { "enabled": true, "weight": 0.35, "compensation": 1.0 },
       "gradient": { "enabled": true, "weight": 0.20, "kernel": "sobel" }
     }
   },
@@ -155,7 +155,7 @@
     "uncertainty_init_sigma": 1.0,
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "gradient": { "enabled": true, "weight": 0.1, "kernel": "sobel" }
     }
   },
@@ -166,7 +166,7 @@
     "uncertainty_init_sigma": 1.0,
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "gradient": { "enabled": true, "weight": 0.1, "kernel": "sobel" },
       "ffl": { "enabled": true, "weight": 0.1, "alpha": 1.0, "ramp_epochs": 15 }
     }
@@ -178,8 +178,16 @@
     "uncertainty_init_sigma": 1.0,
     "losses": {
       "charbonnier": { "enabled": true, "weight": 1.0, "epsilon": 1e-3 },
-      "ms_ssim": { "enabled": true, "weight": 0.2 },
+      "ms_ssim": { "enabled": true, "weight": 0.2, "compensation": 1.0 },
       "log_l1": { "enabled": true, "weight": 0.3, "epsilon": 1e-6 }
+    }
+  },
+
+  "zhao_msssim_l1_paper": {
+    "mode": "additive",
+    "losses": {
+      "ms_ssim": { "enabled": true, "weight": 5.0, "compensation": 1.0 },
+      "l1": { "enabled": true, "weight": 195.0 }
     }
   }
 }

@@ -48,12 +48,11 @@ def ssim_loss(pred, gt, window_size=11):
     loss_fn = kornia.losses.SSIMLoss(window_size=window_size, max_val=1.0)
     return 2.0 * loss_fn(pred.clamp(0.0, 1.0), gt)
 
-# TODO: check the kornia actual formula if it divides by 2
-def ms_ssim_loss(pred, gt, window_size=11):
+def ms_ssim_loss(pred, gt, compensation=1.0):
     """1 - MS-SSIM. Requires kornia >= 0.8."""
     import kornia
-    loss_fn = kornia.losses.MS_SSIMLoss(window_size=window_size)
-    return 1.0 - loss_fn(pred.clamp(0.0, 1.0), gt)
+    loss_fn = kornia.losses.MS_SSIMLoss(alpha=1.0, compensation=compensation)
+    return loss_fn(pred.clamp(0.0, 1.0), gt)
 
 
 def gradient_loss(pred, gt, kernel="sobel"):
@@ -99,6 +98,7 @@ def ffl_loss(pred, gt, alpha=1.0):
     gt_fft = torch.fft.rfft2(gt, norm="ortho")
     diff = pred_fft - gt_fft
     weight = (diff.abs() ** alpha).detach()
+    weight = weight / (weight.amax(dim=(-2, -1), keepdim=True) + 1e-8)  # paper-mandated [0,1] normalization
     return torch.mean(weight * (diff.real ** 2 + diff.imag ** 2))
 
 

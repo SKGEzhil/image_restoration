@@ -47,7 +47,7 @@ loss_config:
     ms_ssim:
       enabled: false
       weight: 0.2
-      window_size: 11
+      compensation: 1.0
 
     gradient:
       enabled: false
