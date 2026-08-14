@@ -61,3 +61,7 @@ graphify-out
 .cortexkit
 
 .parallel_runs_*
+
+# Autoresearch experiment state
+.experiment_autoresearch_*.json
+.experiment_autoresearch_state.json

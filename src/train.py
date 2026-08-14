@@ -31,10 +31,30 @@ DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "src" / "training_conf
 
 
 def parse_args(config_path=None):
-    config_path = Path(config_path) if config_path else DEFAULT_CONFIG
+    # Parse CLI first to check for --config override
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--config", type=str, default=None,
+                        help="Path to custom training config YAML (overrides default)")
+    parser.add_argument("--loss-preset", type=str, default=None,
+                        help="Override loss_config.preset from CLI (e.g., combo_3)")
+    parser.add_argument("--run-name", type=str, default=None)
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    cli_args, _ = parser.parse_known_args()
+
+    # Determine final config path: explicit arg > --config CLI > default
+    if config_path is not None:
+        config_path = Path(config_path)
+    elif cli_args.config is not None:
+        config_path = Path(cli_args.config)
+    else:
+        config_path = DEFAULT_CONFIG
+
     with open(config_path) as f:
         config = yaml.safe_load(f) or {}
     config_dir = config_path.resolve().parent
+
     defaults = {
         "train_model": "nafnet",
         "models": {"nafnet": {"width": 32, "num_blks": 8, "drop_out_rate": 0.0}},
@@ -57,16 +77,7 @@ def parse_args(config_path=None):
     }
     merged = {**defaults, **config}
 
-    # CLI overrides via argparse
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--loss-preset", type=str, default=None,
-                        help="Override loss_config.preset from CLI (e.g., combo_3)")
-    parser.add_argument("--run-name", type=str, default=None)
-    parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--lr", type=float, default=None)
-    cli_args, _ = parser.parse_known_args()
-
+    # Apply CLI overrides
     if cli_args.loss_preset is not None:
         merged["loss_config"] = {"preset": cli_args.loss_preset}
     if cli_args.run_name is not None:
