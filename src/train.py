@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 import yaml
 from dotenv import load_dotenv
 from torch.utils.data import DataLoader
@@ -246,6 +247,8 @@ def main():
             n_layers=d_cfg.get("n_layers", 3),
             use_spectral_norm=d_cfg.get("use_spectral_norm", True),
         ).to(device)
+        if device.type == "cuda":
+            discriminator = torch.compile(discriminator)
         d_params = sum(p.numel() for p in discriminator.parameters())
         logger.info(f"discriminator params={d_params/1e6:.2f}M")
         d_lr = gan_cfg.get("discriminator_lr", 1e-4)
@@ -324,11 +327,37 @@ def main():
             loss_pixel = loss_fn(pred, gt)
             loss = loss_pixel
 
-            # ─── GAN branch: generator adversarial loss ─────────────────
-            if use_gan:
-                d_fake = discriminator(pred)
+            # ─── GAN branch: generator adversarial + feature-matching ─
+            in_pretrain = use_gan and (epoch < gan_cfg.get("pretrain_epochs", 0))
+            loss_adv = None
+            loss_fm = None
+            loss_d = None
+            if use_gan and not in_pretrain:
+                # Adversarial weight warmup: linear ramp 0 -> target
+                adv_warmup = gan_cfg.get("adv_warmup_epochs", 0)
+                epochs_since_pretrain = epoch - gan_cfg.get("pretrain_epochs", 0)
+                if adv_warmup > 0 and epochs_since_pretrain < adv_warmup:
+                    warmup_frac = (epochs_since_pretrain + 1) / (adv_warmup + 1)
+                else:
+                    warmup_frac = 1.0
+
+                w_adv_raw = gan_cfg.get("loss_weights", {}).get("adv", 0.005)
+                w_adv = w_adv_raw * warmup_frac
+
+                # Feature matching: get intermediate D features
+                if gan_cfg.get("feature_matching", False):
+                    d_fake, feat_fake = discriminator.forward_features(pred)
+                    with torch.no_grad():
+                        _, feat_real = discriminator.forward_features(gt)
+                    loss_fm = 0.0
+                    for f_fake, f_real in zip(feat_fake, feat_real):
+                        loss_fm += F.l1_loss(f_fake, f_real)
+                    w_fm = gan_cfg.get("loss_weights", {}).get("fm", 1.0)
+                    loss = loss + w_fm * loss_fm
+                else:
+                    d_fake = discriminator(pred)
+
                 loss_adv = lsgan_loss(d_fake, target_is_real=True)
-                w_adv = gan_cfg.get("loss_weights", {}).get("adv", 0.1)
                 loss = loss + w_adv * loss_adv
 
             loss.backward()
@@ -336,14 +365,26 @@ def main():
             scheduler.step()
 
             # ─── GAN branch: discriminator update ───────────────────────
-            if use_gan and (global_step % gan_cfg.get("discriminator_update_freq", 1) == 0):
+            if use_gan and not in_pretrain and (global_step % gan_cfg.get("discriminator_update_freq", 2) == 0):
                 d_optimizer.zero_grad(set_to_none=True)
-                d_real = discriminator(gt)
-                d_fake = discriminator(pred.detach())
-                loss_d_real = lsgan_loss(d_real, target_is_real=True)
-                loss_d_fake = lsgan_loss(d_fake, target_is_real=False)
+                soft_label = gan_cfg.get("use_soft_labels", True)
+                if soft_label:
+                    # Soft labels: 0.9 for real, 0.1 for fake — prevents D saturation
+                    d_real = discriminator(gt)
+                    d_fake = discriminator(pred.detach())
+                    loss_d_real = F.mse_loss(d_real, torch.full_like(d_real, 0.9))
+                    loss_d_fake = F.mse_loss(d_fake, torch.full_like(d_fake, 0.1))
+                else:
+                    d_real = discriminator(gt)
+                    d_fake = discriminator(pred.detach())
+                    loss_d_real = lsgan_loss(d_real, target_is_real=True)
+                    loss_d_fake = lsgan_loss(d_fake, target_is_real=False)
                 loss_d = (loss_d_real + loss_d_fake) * 0.5
                 loss_d.backward()
+                # Gradient clipping on D to prevent explosion
+                d_grad_clip = gan_cfg.get("d_grad_clip", 1.0)
+                if d_grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(discriminator.parameters(), max_norm=d_grad_clip)
                 d_optimizer.step()
                 if d_scheduler is not None:
                     d_scheduler.step()
@@ -369,13 +410,19 @@ def main():
                 buf_components[name].append(val)
 
             # Buffer GAN metrics for logging
-            if use_gan:
-                if "adv" not in buf_components:
-                    buf_components["adv"] = deque(maxlen=buf_size)
-                buf_components["adv"].append(loss_adv.item())
-                if "d_loss" not in buf_components:
-                    buf_components["d_loss"] = deque(maxlen=buf_size)
-                buf_components["d_loss"].append(loss_d.item())
+            if use_gan and not in_pretrain:
+                if loss_adv is not None:
+                    if "adv" not in buf_components:
+                        buf_components["adv"] = deque(maxlen=buf_size)
+                    buf_components["adv"].append(loss_adv.item())
+                if loss_d is not None:
+                    if "d_loss" not in buf_components:
+                        buf_components["d_loss"] = deque(maxlen=buf_size)
+                    buf_components["d_loss"].append(loss_d.item())
+                if loss_fm is not None:
+                    if "fm_loss" not in buf_components:
+                        buf_components["fm_loss"] = deque(maxlen=buf_size)
+                    buf_components["fm_loss"].append(loss_fm.item())
 
             if global_step % args.wandb_log_step == 0 and wandb_run is not None:
                 log_dict = {

@@ -84,24 +84,54 @@ scheduler:
 
 # ─── GAN training configuration ───────────────────────────────────────
 # Set enabled: true to activate adversarial training (SCUNetG mode).
-# When enabled, train.py instantiates a PatchGAN discriminator and
-# trains with L1 + DISTS + adversarial loss.
+# WARNING: GAN training is fragile. Without pretraining the generator
+# will likely collapse (random noise output). Follow these rules:
+#   1. ALWAYS pretrain with L1/DISTS only (pretrain_epochs >= 10)
+#   2. Keep adversarial weight tiny (adv: 0.005 - 0.01)
+#   3. Update D less often than G (discriminator_update_freq: 2 - 5)
+#   4. Enable feature_matching for dense gradient signal to G
+#   5. If D still overpowers G, increase d_grad_clip or lower ndf
 gan_training:
   enabled: false
+
   # Discriminator architecture
   discriminator:
-    ndf: 64
+    ndf: 64                # base channels (lower = weaker D, more stable)
     n_layers: 3
     use_spectral_norm: true
-  # Loss weights (applied on top of the pixel-loss preset)
+
+  # Loss weights — adv must be MUCH smaller than pixel loss weight
   loss_weights:
-    adv: 0.1
+    adv: 0.005             # adversarial (keep tiny: 0.001-0.01)
+    fm: 1.0                # feature matching on D intermediate layers
+
   # Number of epochs to pretrain with pixel loss only before
-  # activating the adversarial component (0 = no pretraining)
-  pretrain_epochs: 0
-  # Update discriminator every N training steps
-  discriminator_update_freq: 1
+  # activating the adversarial component.
+  # STRONGLY RECOMMENDED: >= 10 epochs (paper uses hundreds of k iters)
+  pretrain_epochs: 10
+
+  # Linear warmup: ramp adversarial weight from 0 -> target over N epochs
+  # after pretraining ends. 0 = no warmup.
+  adv_warmup_epochs: 5
+
+  # Update discriminator every N training steps (G updated every step).
+  # Higher values prevent D from overpowering G.
+  discriminator_update_freq: 2
+
+  # D optimizer LR
   discriminator_lr: 0.0001
+
+  # Gradient clipping max norm for D (0 = disabled). Prevents exploding D
+  # gradients that can destabilize the whole GAN.
+  d_grad_clip: 1.0
+
+  # Use soft labels (0.9 / 0.1) instead of hard (1.0 / 0.0) for D.
+  # Prevents D from becoming over-confident too quickly.
+  use_soft_labels: true
+
+  # Enable feature-matching loss: generator matches D's intermediate layer
+  # features of real images. Provides dense, stable gradients to G.
+  feature_matching: true
 
 # ─── Loss configuration ───────────────────────────────────────────────
 # Quick switch via preset, or define custom loss below.
@@ -109,7 +139,7 @@ gan_training:
 #          scunet_l1, scunet_gan
 # "legacy" = old default: 0.5*L1 + 0.5*SSIM + 0.05*FFT
 loss_config:
-  preset: scunet_l1
+  preset: scunet_l1 #only calculates L1 loss
 
   # Manual config (used if preset is null)
   mode: additive              # "additive" | "geometric" | "uncertainty"

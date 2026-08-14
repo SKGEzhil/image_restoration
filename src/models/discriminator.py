@@ -3,6 +3,9 @@
 Based on the KAIR / BasicSR discriminator architectures used across
 the SCUNet / Real-ESRGAN / SRGAN ecosystem.
 
+NOTE: forward() and forward_features() are separate methods for
+torch.compile compatibility — each has a static return signature.
+
 References:
     https://github.com/cszn/KAIR/blob/master/models/network_discriminator.py
     https://github.com/XPixelGroup/BasicSR/blob/master/basicsr/archs/discriminator_arch.py
@@ -76,7 +79,23 @@ class PatchGANDiscriminator(nn.Module):
             m.bias.data.fill_(0)
 
     def forward(self, x):
+        """Standard forward: returns discriminator logits only.
+
+        Static return type (Tensor) for torch.compile compatibility.
+        """
         return self.model(x)
+
+    def forward_features(self, x):
+        """Forward that returns logits + intermediate layer features.
+
+        Static return type (Tensor, list[Tensor]) for torch.compile.
+        Use this when feature-matching loss is needed.
+        """
+        features = []
+        for module in self.model:
+            x = module(x)
+            features.append(x)
+        return x, features
 
 
 def create_discriminator(input_nc=1, ndf=64, n_layers=3, use_spectral_norm=True):
