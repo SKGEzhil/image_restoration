@@ -1,16 +1,21 @@
 """Evaluate a trained model on data/test.
 
-Computes the same metrics used during training (L1 + SSIM) plus PSNR and LPIPS.
+Computes the same metrics used during training (L1 + SSIM) plus PSNR and DISTS.
 Usage:
     python test.py --checkpoint runs/<run_id>/best.pt
     python test.py --checkpoint runs/<run_id>/best.pt --batch-size 32
+    python test.py --checkpoint runs/<run_id>/best.pt --use-tta --build-submission
 """
 
 import argparse
+import base64
+import csv
 import json
 import logging
 import os
+import shutil
 import time
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -20,8 +25,8 @@ from dotenv import load_dotenv
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import PairedDataset, get_device
-from metrics import compute_lpips, compute_psnr, compute_ssim
+from dataset import NoisyLROnly, PairedDataset, get_device
+from metrics import compute_dists, compute_psnr, compute_ssim
 from models import create_model
 
 
@@ -46,6 +51,10 @@ def parse_args():
                    help="DataLoader workers (overrides test_config.yaml)")
     p.add_argument("--save-outputs", action="store_true", default=config.get("save_outputs", False),
                    help="Save restored samples as .npy into runs/<run_id>/outputs")
+    p.add_argument("--use-tta", action="store_true", default=config.get("use_tta", False),
+                   help="Test-time augmentation (8-aug average)")
+    p.add_argument("--build-submission", action="store_true", default=config.get("build_submission", False),
+                   help="Build Kaggle submission CSV from saved .npy outputs")
     args = p.parse_args()
 
     # Store full config for model params lookup
@@ -71,6 +80,41 @@ def load_model(checkpoint_path, args, device):
     return model.to(device), ckpt, model_name
 
 
+@torch.no_grad()
+def tta_inference(model, x, device):
+    """Test-time augmentation: average predictions over 8 augmentations.
+
+    4 rotations (0/90/180/270) × 2 flips (none, horizontal).
+    """
+    preds = []
+    for k in (0, 1, 2, 3):
+        x_rot = torch.rot90(x, k, [2, 3])
+        for do_flip in (False, True):
+            x_in = torch.flip(x_rot, [3]) if do_flip else x_rot
+            out = model(x_in).clamp(0, 1)
+            if do_flip:
+                out = torch.flip(out, [3])
+            out = torch.rot90(out, -k, [2, 3])
+            preds.append(out)
+    return torch.stack(preds, dim=0).mean(dim=0)
+
+
+def build_submission_csv(output_dir, csv_path):
+    """Encode saved .npy predictions into a Kaggle-compatible base64 CSV."""
+    files = sorted(f for f in os.listdir(output_dir) if f.endswith(".npy"))
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["id", "npy_base64"])
+        writer.writeheader()
+        for idx, fname in enumerate(files, start=1):
+            arr = np.load(os.path.join(output_dir, fname))
+            buf = BytesIO()
+            np.save(buf, arr)
+            encoded = base64.b64encode(buf.getvalue()).decode()
+            writer.writerow({"id": idx, "npy_base64": encoded})
+    print(f"Submission CSV written: {csv_path}  ({len(files)} rows)")
+    return len(files)
+
+
 def main():
     args = parse_args()
     device = get_device()
@@ -89,15 +133,52 @@ def main():
     model, ckpt, model_name = load_model(args.checkpoint, args, device)
     logger.info(f"model={model_name} loaded (train global_step={ckpt.get('global_step')}, "
                 f"best_val_loss={ckpt.get('best_val_loss')})")
+    if args.use_tta:
+        logger.info("TTA enabled (8-aug average)")
 
+    model.eval()
+
+    if args.build_submission:
+        # ── Submission mode: no GT, no metrics, just predict + CSV ──────
+        logger.info("build_submission mode: skipping metrics, GT not required")
+        sub_ds = NoisyLROnly(args.data_dir, split="test")
+        sub_loader = DataLoader(
+            sub_ds, batch_size=args.batch_size, shuffle=False,
+            num_workers=args.num_workers, pin_memory=device.type != "mps",
+        )
+        out_dir_outputs = out_dir / "outputs"
+        # Clear outputs dir to avoid stale files from previous runs
+        if out_dir_outputs.exists():
+            shutil.rmtree(out_dir_outputs)
+        out_dir_outputs.mkdir(parents=True, exist_ok=True)
+        start = time.time()
+        saved_names = []
+        with torch.no_grad():
+            for lr, names in tqdm(sub_loader, desc="Predicting", unit="batch"):
+                lr = lr.to(device)
+                pred = tta_inference(model, lr, device) if args.use_tta else model(lr)
+                for name, out in zip(names, pred.squeeze(1).clamp(0, 1).cpu().numpy()):
+                    np.save(out_dir_outputs / name, out)
+                    saved_names.append(name)
+        elapsed = round(time.time() - start, 2)
+        csv_path = out_dir / "submission.csv"
+        n = build_submission_csv(out_dir_outputs, csv_path)
+        logger.info(f"Saved {n} predictions in {elapsed}s -> {csv_path}")
+        print(f"\n=== Submission ===")
+        print(f"  samples : {n}")
+        print(f"  elapsed : {elapsed}s")
+        print(f"  outputs : {out_dir_outputs}")
+        print(f"  csv     : {csv_path}")
+        return
+
+    # ── Evaluation mode: paired GT + metrics ────────────────────────────
     test_ds = PairedDataset(args.data_dir, split="test")
     test_loader = DataLoader(
         test_ds, batch_size=args.batch_size, shuffle=False,
         num_workers=args.num_workers, pin_memory=device.type != "mps",
     )
 
-    model.eval()
-    total_l1 = total_ssim = total_psnr = total_lpips = 0.0
+    total_l1 = total_ssim = total_psnr = total_dists = 0.0
     num = 0
     outputs = []
     per_sample = []
@@ -105,26 +186,26 @@ def main():
     with torch.no_grad():
         for lr, gt, names in tqdm(test_loader, desc="Testing", unit="batch"):
             lr, gt = lr.to(device), gt.to(device)
-            pred = model(lr)
+            pred = tta_inference(model, lr, device) if args.use_tta else model(lr)
             b = lr.size(0)
             total_l1 += torch.nn.functional.l1_loss(pred, gt).item() * b
             total_ssim += compute_ssim(pred, gt).item() * b
             total_psnr += compute_psnr(pred, gt).item() * b
-            total_lpips += compute_lpips(pred, gt).item() * b
+            total_dists += compute_dists(pred, gt).item() * b
             num += b
             if args.save_outputs:
-                for name, out in zip(names, pred.clamp(0, 1).cpu().numpy()):
+                for name, out in zip(names, pred.squeeze(1).clamp(0, 1).cpu().numpy()):
                     outputs.append((name, out))
             for name, p, g in zip(names, pred, gt):
                 psnr_s = compute_psnr(p.unsqueeze(0), g.unsqueeze(0))
                 ssim_s = compute_ssim(p.unsqueeze(0), g.unsqueeze(0))
-                lpips_s = compute_lpips(p.unsqueeze(0), g.unsqueeze(0))
+                dists_s = compute_dists(p.unsqueeze(0), g.unsqueeze(0))
                 per_sample.append({
                     "name": name,
                     "L1": round(float(torch.nn.functional.l1_loss(p.unsqueeze(0), g.unsqueeze(0))), 6),
                     "SSIM": round(float(ssim_s), 6),
                     "PSNR": round(float(psnr_s), 6),
-                    "LPIPS": round(float(lpips_s), 6),
+                    "DISTS": round(float(dists_s), 6),
                 })
 
     metrics = {
@@ -133,7 +214,7 @@ def main():
         "L1": total_l1 / num,
         "SSIM": total_ssim / num,
         "PSNR": total_psnr / num,
-        "LPIPS": total_lpips / num,
+        "DISTS": total_dists / num,
         "elapsed_s": round(time.time() - start, 2),
     }
 
@@ -157,7 +238,7 @@ def main():
     print(f"  L1      : {metrics['L1']:.4f}")
     print(f"  SSIM    : {metrics['SSIM']:.4f}")
     print(f"  PSNR    : {metrics['PSNR']:.2f} dB")
-    print(f"  LPIPS   : {metrics['LPIPS']:.4f}")
+    print(f"  DISTS   : {metrics['DISTS']:.4f}")
     print(f"  saved   : {metrics_file}")
     print(f"  details : {details_file}")
 

@@ -9,7 +9,7 @@ import numpy as np
 
 def load_sample(data_dir: str, index: int):
     gt = np.load(os.path.join(data_dir, "train", "GT", f"{index:06d}.npy"))
-    noisy = np.load(os.path.join(data_dir, "train", "NoisyLR", f"{index:06d}.npy"))
+    noisy = np.load(os.path.join(data_dir, "train", "test/NoisyLR", f"{index:06d}.npy"))
     return gt, noisy
 
 
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         else:
             sample_index = args.index
         gt = np.load(os.path.join(args.data_dir, "test", "GT", f"{sample_index:06d}.npy"))
-        noisy = np.load(os.path.join(args.data_dir, "test", "NoisyLR", f"{sample_index:06d}.npy"))
+        noisy = np.load(os.path.join(args.data_dir, "test", "test/NoisyLR", f"{sample_index:06d}.npy"))
         pred = load_test_sample(args.runs_dir, args.run_id, sample_index)
         metrics = load_test_metrics(args.runs_dir, args.run_id, sample_index)
         print(f"GT: {gt.shape} {gt.dtype} range [{gt.min():.4f}, {gt.max():.4f}]")

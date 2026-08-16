@@ -282,7 +282,7 @@ def main():
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
         logger.info(f"scheduler=StepLR (step_size={step_size}, gamma={gamma})")
     else:
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-6)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-5)
         logger.info(f"scheduler=CosineAnnealingLR (T_max={total_steps})")
 
     epochs_elapsed = 0
