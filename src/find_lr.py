@@ -143,7 +143,7 @@ def find_lr(args):
         num_iter=args.num_iter,
         step_mode=args.step_mode,
         smooth_f=args.smooth_f,
-        diverge_th=args.diverge_th,
+        diverge_th=float("inf"),
     )
 
     # Plot + save
@@ -206,7 +206,6 @@ def parse_args():
     parser.add_argument("--num-iter", type=int, default=100, help="Number of iterations")
     parser.add_argument("--step-mode", type=str, default="exp", choices=["exp", "linear"], help="LR schedule mode")
     parser.add_argument("--smooth-f", type=float, default=0.05, help="Loss smoothing factor")
-    parser.add_argument("--diverge-th", type=float, default=5, help="Divergence threshold")
     parser.add_argument("--skip-start", type=int, default=10, help="Batches to skip at start of plot")
     parser.add_argument("--skip-end", type=int, default=5, help="Batches to skip at end of plot")
 

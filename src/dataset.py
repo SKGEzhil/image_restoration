@@ -8,6 +8,30 @@ import numpy as np
 import torch
 
 
+class NoisyLROnly(torch.utils.data.Dataset):
+    """Loads only NoisyLR npy images (no GT required).
+
+    Used for inference/submission when ground truth is unavailable.
+    """
+
+    def __init__(self, root, split="test"):
+        self.root = Path(root)
+        self.split = split
+        lr_dir = self.root / split / "NoisyLR"
+        self.names = sorted(p.name for p in lr_dir.glob("*.npy"))
+        if len(self.names) == 0:
+            raise FileNotFoundError(f"No samples found in {lr_dir}")
+
+    def __len__(self):
+        return len(self.names)
+
+    def __getitem__(self, idx):
+        name = self.names[idx]
+        lr = np.load(self.root / self.split / "NoisyLR" / name)
+        lr = torch.from_numpy(np.ascontiguousarray(lr)).unsqueeze(0).float()
+        return lr, name
+
+
 class PairedDataset(torch.utils.data.Dataset):
     """Loads paired (NoisyLR, GT) npy images for a given split.
 
