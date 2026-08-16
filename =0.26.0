@@ -1,0 +1,36 @@
+Requirement already satisfied: pyyaml in /usr/local/lib/python3.12/dist-packages (6.0.3)
+Requirement already satisfied: scipy in /usr/local/lib/python3.12/dist-packages (1.18.0)
+Collecting scikit-learn
+  Using cached scikit_learn-1.9.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (11 kB)
+Collecting pywavelets
+  Using cached pywavelets-1.9.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (7.6 kB)
+Collecting scikit-image
+  Using cached scikit_image-0.26.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (15 kB)
+Requirement already satisfied: numpy<2.8,>=2.0.0 in /usr/local/lib/python3.12/dist-packages (from scipy) (2.1.2)
+Collecting joblib>=1.4.0 (from scikit-learn)
+  Using cached joblib-1.5.3-py3-none-any.whl.metadata (5.5 kB)
+Collecting narwhals>=2.0.1 (from scikit-learn)
+  Using cached narwhals-2.24.0-py3-none-any.whl.metadata (15 kB)
+Collecting threadpoolctl>=3.5.0 (from scikit-learn)
+  Using cached threadpoolctl-3.6.0-py3-none-any.whl.metadata (13 kB)
+Requirement already satisfied: networkx>=3.0 in /usr/local/lib/python3.12/dist-packages (from scikit-image) (3.3)
+Requirement already satisfied: pillow>=10.1 in /usr/local/lib/python3.12/dist-packages (from scikit-image) (11.0.0)
+Collecting imageio!=2.35.0,>=2.33 (from scikit-image)
+  Using cached imageio-2.37.4-py3-none-any.whl.metadata (9.6 kB)
+Collecting tifffile>=2022.8.12 (from scikit-image)
+  Downloading tifffile-2026.8.16-py3-none-any.whl.metadata (34 kB)
+Requirement already satisfied: packaging>=21 in /usr/local/lib/python3.12/dist-packages (from scikit-image) (25.0)
+Collecting lazy-loader>=0.4 (from scikit-image)
+  Using cached lazy_loader-0.5-py3-none-any.whl.metadata (5.9 kB)
+Using cached scikit_learn-1.9.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (9.1 MB)
+Using cached pywavelets-1.9.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (4.5 MB)
+Using cached scikit_image-0.26.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (13.6 MB)
+Using cached imageio-2.37.4-py3-none-any.whl (318 kB)
+Using cached joblib-1.5.3-py3-none-any.whl (309 kB)
+Using cached lazy_loader-0.5-py3-none-any.whl (8.0 kB)
+Using cached narwhals-2.24.0-py3-none-any.whl (461 kB)
+Using cached threadpoolctl-3.6.0-py3-none-any.whl (18 kB)
+Downloading tifffile-2026.8.16-py3-none-any.whl (271 kB)
+Installing collected packages: tifffile, threadpoolctl, pywavelets, narwhals, lazy-loader, joblib, imageio, scikit-learn, scikit-image
+
+Successfully installed imageio-2.37.4 joblib-1.5.3 lazy-loader-0.5 narwhals-2.24.0 pywavelets-1.9.0 scikit-image-0.26.0 scikit-learn-1.9.0 threadpoolctl-3.6.0 tifffile-2026.8.16

@@ -1,0 +1,42 @@
+[project]
+name = "image-restoration_2"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "kornia>=0.8.0",
+    "matplotlib>=3.11.1",
+    "lpips>=0.1.4",
+    "numpy>=2.5.2",
+    "python-dotenv>=1.2.2",
+    # "torch>=2.13.0",
+    "torchmetrics>=1.9.0",
+    # "torchvision>=0.28.0",
+    "tqdm>=4.70.0",
+    "wandb>=0.28.1",
+    "scikit-image>=0.26.0",
+    "pywavelets>=1.9.0",
+    "opencv-python>=5.0.0",
+    "scikit-learn>=1.6.0",
+    "scipy>=1.15.0",
+    "pyyaml>=6.0",
+]
+
+# "kornia>=0.8.0" "matplotlib>=3.11.1" "lpips>=0.1.4" "numpy>=2.5.2" "python-dotenv>=1.2.2" "torch>=2.13.0" "torchmetrics>=1.9.0" "tqdm>=4.70.0" "wandb>=0.28.1" "scikit-image>=0.26.0" "pywavelets>=1.9.0" "opencv-python>=5.0.0" "scikit-learn>=1.6.0" "scipy>=1.15.0" "pyyaml>=6.0"
+
+# [project.optional-dependencies]
+# windows = [
+#     "triton-windows>=3.7.0",
+# ]
+
+# [[tool.uv.index]]
+# name = "pytorch-cu129"
+# url = "https://download.pytorch.org/whl/cu129"
+# explicit = true
+
+# [tool.uv.sources]
+# torch = [
+#   { index = "pytorch-cu129", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+# ]
+# torchvision = [
+#   { index = "pytorch-cu129", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+# ]
