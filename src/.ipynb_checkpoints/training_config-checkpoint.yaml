@@ -53,7 +53,7 @@ models:                    # model definitions — add new models here
   scunet_sr:
     in_nc: 1
     config: [2, 2, 2, 2, 2, 2, 2]
-    dim: 128
+    dim: 64
     drop_path_rate: 0.0
     input_resolution: 128
     up_scale: 2
@@ -71,8 +71,8 @@ data_dir: data             # paired dataset root (NoisyLR + GT subdirs per split
 epochs: 100
 batch_size: 12
 lr: 0.0003
-val_every: 200             # run validation every N training steps
-wandb_log_step: 200         # log metrics to wandb every N steps (0 disables wandb)
+val_every: 100             # run validation every N training steps
+wandb_log_step: 100         # log metrics to wandb every N steps (0 disables wandb)
 
 # ─── Scheduler configuration ──────────────────────────────────────────
 # "cosine"  -> CosineAnnealingLR (default, current behavior)
@@ -139,7 +139,7 @@ gan_training:
 #          scunet_l1, scunet_gan
 # "legacy" = old default: 0.5*L1 + 0.5*SSIM + 0.05*FFT
 loss_config:
-  preset: scunet_l1 #only calculates L1 loss
+  preset: l1_ssim_baseline #only calculates L1 loss
 
   # Manual config (used if preset is null)
   mode: additive              # "additive" | "geometric" | "uncertainty"
