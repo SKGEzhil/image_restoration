@@ -39,9 +39,9 @@ models:                    # model definitions — must match training config
     input_resolution: 128
     up_scale: 2
 
-data_dir: ""
+data_dir: "src/data"
 batch_size: 16
 num_workers: 0
 save_outputs: false
-use_tta: true              # test-time augmentation (8-aug average)
-build_submission: true     # save .npy outputs + generate submission.csv
+use_tta: false              # test-time augmentation (8-aug average)
+build_submission: false     # save .npy outputs + generate submission.csv
