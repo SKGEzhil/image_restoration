@@ -1,0 +1,40 @@
+# =============================================================================
+# Image Restoration — KLA Hackathon 2026
+# =============================================================================
+# Install with CUDA 12.8 support:
+#   pip install -r requirements.txt
+#
+# If you already have PyTorch installed, comment out the torch/torchvision
+# lines below and install them separately from https://pytorch.org
+
+# ─── PyTorch + CUDA 12.8 ─────────────────────────────────────────────────────
+# Install from the cu128 index to get GPU-accelerated builds.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch>=2.13.0
+torchvision>=0.28.0
+
+# ─── Core ML / CV ────────────────────────────────────────────────────────────
+torchmetrics>=1.9.0        # PSNR, SSIM metrics
+kornia>=0.8.0              # differentiable CV ops (SSIM loss, augmentations)
+timm>=1.0.0                # PyTorch Image Model helpers (trunc_normal_ init)
+lpips>=0.1.4               # LPIPS perceptual metric (test-time only)
+
+# ─── Image Processing ────────────────────────────────────────────────────────
+scikit-image>=0.26.0       # skimage metrics and transforms
+opencv-python>=5.0.0       # cv2 image I/O
+pywavelets>=1.9.0          # wavelet transforms
+
+# ─── Scientific Computing ────────────────────────────────────────────────────
+numpy>=2.5.2
+scipy>=1.15.0
+scikit-learn>=1.6.0
+
+# ─── Experiment Tracking ─────────────────────────────────────────────────────
+wandb>=0.28.1              # Weights & Biases logging (optional, needs API key)
+
+# ─── Utilities ───────────────────────────────────────────────────────────────
+matplotlib>=3.11.1         # plotting and visualization
+tqdm>=4.70.0               # progress bars
+pyyaml>=6.0                # YAML config parsing
+python-dotenv>=1.2.2       # .env file loading (for WANDB_API_KEY)
+torch-lr-finder>=0.2.1     # learning rate sweep utility (optional)

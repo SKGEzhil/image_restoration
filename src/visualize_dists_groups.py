@@ -1,4 +1,4 @@
-"""Render GT/NoisyLR/Output grids grouped by LPIPS buckets."""
+"""Render GT/NoisyLR/Output grids grouped by DISTS buckets."""
 
 import argparse
 import json
@@ -8,18 +8,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-LPIPS_BUCKETS = [
-    ("<0.1", lambda v: v < 0.1),
-    ("0.1-0.2", lambda v: (v >= 0.1) & (v < 0.2)),
-    ("0.2-0.3", lambda v: (v >= 0.2) & (v < 0.3)),
-    ("0.3-0.5", lambda v: (v >= 0.3) & (v < 0.5)),
-    (">0.5", lambda v: v >= 0.5),
+DISTS_BUCKETS = [
+    (">0.9", lambda v: v > 0.9),
+    ("0.8-0.9", lambda v: (v > 0.8) & (v <= 0.9)),
+    ("0.7-0.8", lambda v: (v > 0.7) & (v <= 0.8)),
+    ("0.5-0.7", lambda v: (v > 0.5) & (v <= 0.7)),
+    ("<0.5", lambda v: v <= 0.5),
 ]
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Create LPIPS-bucketed comparison grids from a test run"
+        description="Create DISTS-bucketed comparison grids from a test run"
     )
     parser.add_argument(
         "run_path",
@@ -86,23 +86,23 @@ def load_image(path: Path) -> np.ndarray:
 
 
 def bucket_samples(per_sample):
-    groups = {label: [] for label, _ in LPIPS_BUCKETS}
+    groups = {label: [] for label, _ in DISTS_BUCKETS}
     for entry in per_sample:
-        lpips = float(entry["LPIPS"])
-        for label, predicate in LPIPS_BUCKETS:
-            if predicate(lpips):
+        dists = float(entry["DISTS"])
+        for label, predicate in DISTS_BUCKETS:
+            if predicate(dists):
                 groups[label].append(entry)
                 break
     for label in groups:
-        groups[label].sort(key=lambda row: float(row["LPIPS"]))
+        groups[label].sort(key=lambda row: float(row["DISTS"]), reverse=True)
     return groups
 
 
 def make_output_dirs(run_dir: Path):
-    root = run_dir / "lpips_visualizations"
+    root = run_dir / "dists_visualizations"
     root.mkdir(parents=True, exist_ok=True)
     bucket_dirs = {}
-    for label, _ in LPIPS_BUCKETS:
+    for label, _ in DISTS_BUCKETS:
         bucket_dir = root / label
         bucket_dir.mkdir(parents=True, exist_ok=True)
         bucket_dirs[label] = bucket_dir
@@ -121,7 +121,7 @@ def render_batch(batch, data_dir: Path, outputs_dir: Path, out_file: Path, title
         gt = load_image(data_dir / "test" / "GT" / name)
         noisy = load_image(data_dir / "test" / "NoisyLR" / name)
         output = load_image(outputs_dir / name)
-        lpips = float(entry["LPIPS"])
+        dists = float(entry["DISTS"])
         ssim = float(entry["SSIM"])
         psnr = float(entry["PSNR"])
 
@@ -132,7 +132,7 @@ def render_batch(batch, data_dir: Path, outputs_dir: Path, out_file: Path, title
             ax.imshow(img, cmap="gray", vmin=0.0, vmax=1.0)
             ax.axis("off")
             if row == 0:
-                ax.set_title(f"{stem}\nLPIPS {lpips:.4f}", fontsize=10)
+                ax.set_title(f"{stem}\nDISTS {dists:.4f}", fontsize=10)
             if col == 0:
                 ax.set_ylabel(row_label, rotation=0, labelpad=28, va="center")
 
@@ -172,13 +172,13 @@ def main():
             batch = samples[start:start + args.batch_size]
             out_file = bucket_dir / f"batch_{batch_index:03d}.png"
             title = (
-                f"{run_dir.name} | LPIPS {label} | "
+                f"{run_dir.name} | DISTS {label} | "
                 f"samples {start + 1}-{start + len(batch)} of {len(samples)}"
             )
             render_batch(batch, data_dir, outputs_dir, out_file, title)
             print(out_file)
 
-    print(f"saved under: {run_dir / 'lpips_visualizations'}")
+    print(f"saved under: {run_dir / 'dists_visualizations'}")
     print(f"checkpoint: {details.get('checkpoint', 'unknown')}")
 
 
