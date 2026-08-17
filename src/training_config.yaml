@@ -68,7 +68,7 @@ models:                    # model definitions — add new models here
     up_scale: 2
 
 data_dir: data             # paired dataset root (NoisyLR + GT subdirs per split)
-epochs: 100
+epochs: 120
 batch_size: 12
 lr: 0.0003
 val_every: 100             # run validation every N training steps
@@ -203,7 +203,7 @@ loss_config:
 num_workers: 0
 seed: 42
 run_name: null             # run id (default: timestamp); also the wandb run name
-resume: null               # path to a last.pt to resume from
+resume: "/home/ubuntu/image_restoration/runs/best/last_.pt"               # path to a last.pt to resume from
 exclude_samples: "/home/ubuntu/image_restoration/src/data_processing/filtering/exp_02/outputs/exclude_list.json"      # path to filtered_samples.json to exclude degraded GT (null = use all)
 include_augmented_data: false   # include synthetic augmented samples in training
 augmentation_offset: 3200      # files >= this offset are augmented (e.g., 003200.npy)

@@ -306,7 +306,8 @@ def main():
         ckpt = torch.load(args.resume, map_location=device)
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
-        scheduler.load_state_dict(ckpt["scheduler"])
+        for pg in optimizer.param_groups:
+            pg['lr'] = args.lr
         epochs_elapsed = ckpt["epoch"]
         steps_elapsed = ckpt["step"]
         global_step = ckpt["global_step"]

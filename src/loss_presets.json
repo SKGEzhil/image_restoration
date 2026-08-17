@@ -116,10 +116,6 @@
         "enabled": true,
         "weight": 0.2,
         "window_size": 11
-      },
-    "dists": {
-        "enabled": true,
-        "weight": 0.1
       }
     }
   },
