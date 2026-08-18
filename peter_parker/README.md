@@ -36,7 +36,7 @@ python run.py test/NoisyLR results/
 
 - **Architecture:** SCUNetSR (Swin-Conv-UNet + PixelShuffle)
 - **Type:** Hybrid CNN + Swin Transformer with 2× super-resolution
-- **Parameters:** ~17M
+- **Parameters:** ~9.66M
 - **Test-Time Augmentation (TTA):** Enabled by default (8-augmentation average: 4 rotations × 2 flips)
 
 ## Directory Structure
