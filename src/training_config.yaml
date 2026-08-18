@@ -207,3 +207,23 @@ resume: null               # path to a last.pt to resume from
 exclude_samples: "/Users/skgezhil/Projects/AI_ML/Image_Restoration/src/data_processing/filtering/exp_02/outputs/exclude_list.json"      # path to filtered_samples.json to exclude degraded GT (null = use all)
 include_augmented_data: false   # include synthetic augmented samples in training
 augmentation_offset: 3200      # files >= this offset are augmented (e.g., 003200.npy)
+
+# ─── Progressive training (Restormer-style) ───────────────────────
+# Start with small random crops, gradually increase to full resolution.
+# Reduces batch size as crop grows to keep GPU memory constant.
+# Reference: Restormer (arXiv:2111.09881) Section 3.3
+progressive_training:
+  enabled: true
+  stages:
+    - end_epoch: 10         # switch at epoch 10
+      crop_size: 64         # LR crop; GT crop = crop_size * up_scale
+      batch_size: 24
+    - end_epoch: 20
+      crop_size: 96
+      batch_size: 16
+    - end_epoch: 30
+      crop_size: 112
+      batch_size: 12
+    - end_epoch: 999        # final stage: full resolution
+      crop_size: 128        # 128 = full LR, 256 = full GT
+      batch_size: 12

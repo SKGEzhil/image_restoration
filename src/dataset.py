@@ -36,14 +36,17 @@ class PairedDataset(torch.utils.data.Dataset):
     """Loads paired (NoisyLR, GT) npy images for a given split.
 
     GT: 256x256 float32 in [0, 1]; NoisyLR: 128x128 float32 (unclamped).
+    When crop_size is set, random crops are taken (LR: crop_size, GT: crop_size * scale_factor).
     """
 
     def __init__(self, root, split="train", augment=False, seed=None,
                  exclude_list=None, include_augmented_data=True,
-                 augmentation_offset=3200):
+                 augmentation_offset=3200, crop_size=None, scale_factor=2):
         self.root = Path(root)
         self.split = split
         self.augment = augment
+        self.crop_size = crop_size
+        self.scale_factor = scale_factor
         self.rng = random.Random(seed)
 
         lr_dir = self.root / split / "NoisyLR"
@@ -83,6 +86,9 @@ class PairedDataset(torch.utils.data.Dataset):
         lr = np.load(self.root / self.split / "NoisyLR" / name)
         gt = np.load(self.root / self.split / "GT" / name)
 
+        if self.crop_size is not None:
+            lr, gt = self._random_crop(lr, gt)
+
         if self.augment:
             lr, gt = self._transform(lr, gt)
 
@@ -102,6 +108,23 @@ class PairedDataset(torch.utils.data.Dataset):
             lr = np.rot90(lr, k)
             gt = np.rot90(gt, k)
         return np.ascontiguousarray(lr), np.ascontiguousarray(gt)
+
+    def _random_crop(self, lr, gt):
+        """Random crop: LR to crop_size, GT to crop_size * scale_factor."""
+        h, w = lr.shape
+        cs = self.crop_size
+        gt_cs = cs * self.scale_factor
+
+        if h < cs or w < cs:
+            return lr, gt  # image smaller than crop, skip
+
+        i = self.rng.randint(0, h - cs)
+        j = self.rng.randint(0, w - cs)
+
+        lr_crop = lr[i:i + cs, j:j + cs]
+        gt_i, gt_j = i * self.scale_factor, j * self.scale_factor
+        gt_crop = gt[gt_i:gt_i + gt_cs, gt_j:gt_j + gt_cs]
+        return lr_crop, gt_crop
 
 
 def get_device():

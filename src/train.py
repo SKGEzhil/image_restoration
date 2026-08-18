@@ -30,6 +30,23 @@ from models import create_model
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "src" / "training_config.yaml"
 
 
+def get_progressive_stage(prog_cfg, epoch, default_batch_size):
+    """Return (crop_size, batch_size) for the given epoch from progressive config.
+
+    Returns (None, default_batch_size) if progressive training is disabled.
+    """
+    if not prog_cfg.get("enabled", False):
+        return None, default_batch_size
+    stages = prog_cfg.get("stages", [])
+    for stage in stages:
+        if epoch < stage["end_epoch"]:
+            return stage["crop_size"], stage["batch_size"]
+    # Past all stages: use last stage settings
+    if stages:
+        return stages[-1]["crop_size"], stages[-1]["batch_size"]
+    return None, default_batch_size
+
+
 def parse_args(config_path=None):
     # Parse CLI first to check for --config override
     parser = argparse.ArgumentParser(add_help=False)
@@ -74,6 +91,7 @@ def parse_args(config_path=None):
         "exclude_samples": None,
         "include_augmented_data": True,
         "augmentation_offset": 3200,
+        "progressive_training": {"enabled": False, "stages": []},
     }
     merged = {**defaults, **config}
 
@@ -218,13 +236,23 @@ def main():
         torch.mps.set_per_process_memory_fraction(0.9)
     pin = device.type != "mps"
 
+    prog_cfg = getattr(args, "progressive_training", {})
+    epochs_elapsed = 0
+    steps_elapsed = 0
+    initial_crop, initial_batch = get_progressive_stage(
+        prog_cfg, epochs_elapsed, args.batch_size
+    )
+    if initial_crop is not None:
+        logger.info(f"progressive training enabled: initial crop_size={initial_crop}, batch_size={initial_batch}")
+
     train_ds = PairedDataset(args.data_dir, split="train", augment=True,
                               seed=args.seed, exclude_list=args.exclude_samples,
                               include_augmented_data=args.include_augmented_data,
-                              augmentation_offset=args.augmentation_offset)
+                              augmentation_offset=args.augmentation_offset,
+                              crop_size=initial_crop)
     val_ds = PairedDataset(args.data_dir, split="val")
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True,
+        train_ds, batch_size=initial_batch, shuffle=True,
         num_workers=args.num_workers, pin_memory=pin, drop_last=True,
     )
     val_loader = DataLoader(
@@ -285,8 +313,6 @@ def main():
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-5)
         logger.info(f"scheduler=CosineAnnealingLR (T_max={total_steps})")
 
-    epochs_elapsed = 0
-    steps_elapsed = 0
     global_step = 0
     best_val_loss = float("inf")
 
@@ -322,8 +348,22 @@ def main():
     start = time.time()
     sample_imgs = None
     lr_val = scheduler.get_last_lr()[0]
+    prev_crop, prev_batch = initial_crop, initial_batch
     for epoch in range(epochs_elapsed, args.epochs):
         loss_fn.step(epoch)
+
+        # ─── Progressive training: switch stage at epoch boundary ───
+        cur_crop, cur_batch = get_progressive_stage(prog_cfg, epoch, args.batch_size)
+        if cur_crop != prev_crop or cur_batch != prev_batch:
+            train_ds.crop_size = cur_crop
+            train_loader = DataLoader(
+                train_ds, batch_size=cur_batch, shuffle=True,
+                num_workers=args.num_workers, pin_memory=pin, drop_last=True,
+            )
+            steps_per_epoch = len(train_loader)
+            logger.info(f"[progressive] epoch {epoch}: crop_size={cur_crop}, batch_size={cur_batch}, steps/epoch={steps_per_epoch}")
+            prev_crop, prev_batch = cur_crop, cur_batch
+
         pbar = tqdm(train_loader, total=steps_per_epoch,
                     desc=f"Epoch {epoch + 1}/{args.epochs}", unit="step")
         for step, (lr, gt, _) in enumerate(pbar):
